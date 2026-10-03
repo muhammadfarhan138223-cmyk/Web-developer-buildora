@@ -109,6 +109,9 @@ export default function Builder() {
 
       // Parse and validate file operations before applying anything.
       const parsed = parseAIResponse(data.content)
+      if (parsed.malformed?.length) {
+        throw new Error(`AI ne ${parsed.malformed.join(', ')} ka code poora nahi bheja. Dobara try karo.`)
+      }
       const validation = validateOperations(parsed.operations)
       if (!validation.ok) throw new Error(validation.error)
 
