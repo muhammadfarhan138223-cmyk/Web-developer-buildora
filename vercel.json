@@ -1,6 +1,17 @@
 {
   "rewrites": [
-    { "source": "/builder", "destination": "/" },
-    { "source": "/login", "destination": "/" }
-  ]
+    {
+      "source": "/builder",
+      "destination": "/"
+    },
+    {
+      "source": "/login",
+      "destination": "/"
+    }
+  ],
+  "functions": {
+    "api/chat.js": {
+      "maxDuration": 60
+    }
+  }
 }
