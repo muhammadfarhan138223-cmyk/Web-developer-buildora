@@ -3,8 +3,8 @@
  * It intentionally excludes secrets and avoids sending huge/unrelated files.
  */
 
-const MAX_TOTAL_CONTEXT = 70000
-const MAX_FILE_CONTEXT = 12000
+const MAX_TOTAL_CONTEXT = 24000
+const MAX_FILE_CONTEXT = 6000
 const SECRET_FILE = /(^|\/)(\.env|\.env\.|.*\.pem$|.*\.key$|.*secret.*)/i
 const IMPORTANT_FILES = new Set([
   'package.json',
