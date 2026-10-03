@@ -7,6 +7,7 @@ import { useStore } from '../store.js'
 import { loadConversations, loadProject, loadProjects, saveConversation, saveProject } from '../lib/database.js'
 import { parseAIResponse } from '../ai/responseParser.js'
 import { scanProject } from '../lib/projectScanner.js'
+import { runSitePipeline, createApiCaller, isSiteRequest, isResumeRequest } from '../lib/siteBuilder.js'
 import CodeView from './CodeView.jsx'
 import Preview from './Preview.jsx'
 import JSZip from 'jszip'
@@ -22,6 +23,7 @@ export default function Builder() {
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
   const importInputRef = useRef(null)
+  const siteJobRef = useRef(null)
 
   const {
     conversation, addMessage, isGenerating, setGenerating,
@@ -55,6 +57,13 @@ export default function Builder() {
     setGenerating(true)
     setGeneratingError(null)
     clearProgress()
+
+    // Websites are built page by page so free models never have to write everything in one reply.
+    const resumeJob = isResumeRequest(message) && siteJobRef.current?.remaining?.length ? siteJobRef.current : null
+    if (resumeJob || isSiteRequest(message, projectFiles)) {
+      await runSiteBuilder(message, resumeJob)
+      return
+    }
 
     const steps = [
       { label: 'Understanding request', icon: 'understand' },
@@ -93,9 +102,11 @@ export default function Builder() {
         body: JSON.stringify({
           message,
           projectContext,
-          conversationHistory: conversation.map((m) => ({
+          conversationHistory: conversation.filter((m) => !m.isError).map((m) => ({
             role: m.role,
-            content: m.content,
+            content: m.role === 'assistant'
+              ? (m.text || (m.operations?.length ? `Updated files: ${m.operations.map((o) => o.path).join(', ')}` : m.content))
+              : m.content,
           })),
         }),
       })
@@ -164,6 +175,61 @@ export default function Builder() {
     }
   }
 
+
+  async function runSiteBuilder(message, resumeJob) {
+    try {
+      const result = await runSitePipeline({
+        message,
+        job: resumeJob,
+        callApi: createApiCaller(),
+        writeFile: (path, content) => {
+          applyOperations([{ type: 'write', path, content }])
+          refreshPreview()
+        },
+        onProgress: ({ labels, statuses }) => {
+          useStore.setState({
+            progress: labels.map((label, i) => ({ label, icon: 'implement', id: `site-${i}`, status: statuses[i] })),
+          })
+        },
+      })
+
+      siteJobRef.current = result.job?.remaining?.length ? result.job : null
+      const operations = result.written.map((path) => ({ type: 'write', path }))
+      const pageFiles = result.written.filter((path) => path.endsWith('.html'))
+
+      if (result.finished) {
+        const summary = `Your website "${result.job.plan.siteName}" is ready with ${result.job.plan.pages.length} pages: ${result.job.plan.pages.map((p) => p.file).join(', ')}. Open Preview and click the menu links to move between pages.`
+        addMessage({ role: 'assistant', content: summary, text: summary, operations, timestamp: Date.now() })
+      } else {
+        const left = result.job?.remaining?.length ? ` Remaining: ${result.job.remaining.join(', ')}. Send "continue" to finish them.` : ''
+        const done = pageFiles.length ? ` Created: ${pageFiles.join(', ')}.` : ''
+        const text = `I could not finish the website: ${result.error?.message || 'unknown error'}.${done}${left}`
+        setGeneratingError(result.error?.message || 'Could not finish the website')
+        addMessage({ role: 'assistant', content: text, text, operations, isError: true, timestamp: Date.now() })
+      }
+
+      if (user?.id && result.written.length) {
+        const latest = useStore.getState()
+        await saveProject(user.id, {
+          id: latest.projectId,
+          name: latest.projectName,
+          files: latest.projectFiles,
+          framework: 'html',
+        })
+        await saveConversation(user.id, latest.projectId, latest.conversation)
+      }
+    } catch (err) {
+      setGeneratingError(err.message || 'Something went wrong')
+      addMessage({
+        role: 'assistant',
+        content: `I ran into an issue: ${err.message || 'Unknown error'}.`,
+        isError: true,
+        timestamp: Date.now(),
+      })
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   function handleConnectSupabase(event) {
     event.preventDefault()
