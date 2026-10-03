@@ -83,13 +83,63 @@ export function buildMessages(userMessage, projectContext = {}, conversationHist
     messages.push({ role: 'system', content: contextStr })
   }
 
-  for (const msg of conversationHistory.slice(-6)) {
+  for (const msg of conversationHistory.slice(-4)) {
     if (msg?.role === 'user' || msg?.role === 'assistant') {
       const content = String(msg.content || '')
-      messages.push({ role: msg.role, content: content.length > 10000 ? `${content.slice(0, 10000)}\n[history truncated]` : content })
+      messages.push({ role: msg.role, content: content.length > 4000 ? `${content.slice(0, 4000)}\n[history truncated]` : content })
     }
   }
 
   messages.push({ role: 'user', content: userMessage })
   return messages
+}
+
+
+export const PLAN_PROMPT = [
+  'You are a website planner. Reply with ONE JSON object only. No markdown, no code fences, no explanation.',
+  'Schema: {"siteName":"","tagline":"","accent":"#hex","accentDark":"#hex","font":"Poppins","pages":[{"file":"index.html","title":"Home","purpose":"one sentence","sections":["hero","features"]}]}',
+  'Rules:',
+  '- Choose 3 to 5 pages for a multipage website. The first page must be index.html.',
+  '- File names use lowercase letters and hyphens only and end with .html, for example about.html, menu.html, contact.html.',
+  '- 3 to 5 sections per page, specific to the business in the request.',
+  '- font must be a Google Fonts family such as Poppins, Inter, Playfair Display or Montserrat.',
+  '- accent and accentDark are hex colours that suit the business.',
+  '- Never invent statistics, testimonials or reviews.',
+].join('\n')
+
+export function buildPlanMessages(userMessage) {
+  return [
+    { role: 'system', content: PLAN_PROMPT },
+    { role: 'user', content: String(userMessage || '').slice(0, 2000) },
+  ]
+}
+
+export function buildPageMessages({ message = '', spec = {}, page = {}, nav = '', footer = '', retryNote = '' }) {
+  const pages = (spec.pages || []).map((p) => `${p.file} (${p.title})`).join(', ')
+  const system = [
+    'You write exactly ONE complete HTML page of a multipage static website.',
+    'Reply with a single file block and nothing else. The block starts with a line that reads ```file:' + page.file + ', then the full HTML, then a closing line of three backticks.',
+    'Rules:',
+    '- Valid HTML from <!DOCTYPE html> to </html>. Keep it under about 180 lines.',
+    '- In <head>: meta viewport, a title, <script src="https://cdn.tailwindcss.com"></script>, a Google Fonts link for the font in the spec, and <link rel="stylesheet" href="style.css">.',
+    '- Just before </body>: <script src="script.js"></script>.',
+    '- Use Tailwind utility classes. For brand colours use bg-[var(--accent)], text-[var(--accent)], hover:bg-[var(--accent-dark)].',
+    '- Add class "reveal" to every major section (scroll animation) and class "hover-lift" to cards.',
+    '- Navigation: a <nav> with a relative link to every page, a mobile menu button with id="menu-btn", and a mobile panel with id="mobile-menu" that starts with class "hidden" and uses md:hidden.',
+    '- Footer: a <footer> with the site name and the same page links.',
+    '- Only link to these pages: ' + pages + '. Use relative hrefs like about.html. Never use href="#" or absolute paths.',
+    '- Write real, specific content for this business. No lorem ipsum. Never invent statistics, testimonials or ratings.',
+    '- If reference nav or footer HTML is provided, copy it exactly.',
+  ].join('\n')
+
+  const user = [
+    'Site spec: ' + JSON.stringify({ siteName: spec.siteName, tagline: spec.tagline, font: spec.font, pages: spec.pages }).slice(0, 3000),
+    'Write the page ' + page.file + ' (' + (page.title || '') + '). Purpose: ' + (page.purpose || '') + '. Sections: ' + (page.sections || []).join(', ') + '.',
+    nav ? 'Reference nav to copy exactly:\n' + String(nav).slice(0, 4000) : '',
+    footer ? 'Reference footer to copy exactly:\n' + String(footer).slice(0, 4000) : '',
+    'Original request: ' + String(message).slice(0, 1500),
+    retryNote,
+  ].filter(Boolean).join('\n\n')
+
+  return [{ role: 'system', content: system }, { role: 'user', content: user }]
 }
