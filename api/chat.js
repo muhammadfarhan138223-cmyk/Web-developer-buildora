@@ -1,4 +1,4 @@
-import { buildMessages } from '../src/ai/contextManager.js'
+import { buildMessages, buildPlanMessages, buildPageMessages } from '../src/ai/contextManager.js'
 import { routeRequest } from '../src/ai/router.js'
 import { classifyError, ErrorType } from '../src/ai/errorClassifier.js'
 
@@ -52,14 +52,44 @@ export default async function handler(req, res) {
       return res.status(413).json({ error: 'That request is too large. Please split it into smaller steps.', code: 'MESSAGE_TOO_LARGE' })
     }
 
-    const projectContext = body.projectContext || {}
-    const conversationHistory = Array.isArray(body.conversationHistory) ? body.conversationHistory : []
-    const messages = buildMessages(message, projectContext, conversationHistory)
+    const mode = body.mode
+    let messages
+    let maxTokens = 8000
+    let temperature = 0.35
+    let taskTier
+
+    if (mode === 'plan') {
+      messages = buildPlanMessages(message)
+      maxTokens = 1500
+      temperature = 0.3
+      taskTier = 'medium'
+    } else if (mode === 'page') {
+      const file = String(body.page?.file || '')
+      if (!/^[a-z0-9-]+\.html$/.test(file) || !Array.isArray(body.spec?.pages) || body.spec.pages.length > 8) {
+        return res.status(400).json({ error: 'Invalid page request.', code: 'AI_BAD_REQUEST' })
+      }
+      messages = buildPageMessages({
+        message,
+        spec: body.spec,
+        page: body.page,
+        nav: typeof body.nav === 'string' ? body.nav : '',
+        footer: typeof body.footer === 'string' ? body.footer : '',
+        retryNote: typeof body.retryNote === 'string' ? body.retryNote.slice(0, 300) : '',
+      })
+      maxTokens = 6000
+      taskTier = 'medium'
+    } else {
+      const projectContext = body.projectContext || {}
+      const conversationHistory = Array.isArray(body.conversationHistory) ? body.conversationHistory : []
+      messages = buildMessages(message, projectContext, conversationHistory)
+    }
+
     const result = await routeRequest({
       messages,
-      temperature: 0.35,
-      maxTokens: 12000,
+      temperature,
+      maxTokens,
       timeoutMs: 60000,
+      ...(taskTier ? { taskTier } : {}),
     })
 
     return res.status(200).json({
