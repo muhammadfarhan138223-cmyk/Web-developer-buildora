@@ -1,10 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
 import { Eye, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react'
 import { useStore } from '../store.js'
-
-function escapeScript(text) {
-  return String(text || '').replace(/<\/script/gi, '<\\/script')
-}
+import { NAV_SCRIPT, escapeScript, resolvePage, buildStaticPreview } from '../lib/previewBuilder.js'
 
 function isReactProject(files) {
   return Boolean(
@@ -149,50 +146,46 @@ function buildReactPreview(files) {
     ${externalDeclarations}
     ${escapeScript(bundle)}
   </script>
+  ${NAV_SCRIPT}
 </body>
 </html>`
-}
-
-function buildStaticPreview(files) {
-  let html = files['index.html']
-  if (!html) return null
-
-  for (const [path, content] of Object.entries(files)) {
-    if (typeof content === 'string' && /^data:[^;]+;base64,/i.test(content)) {
-      const assetPath = path.replace(/^public\//, '').replace(/^\.\//, '')
-      const candidates = [path, assetPath, `/${assetPath}`, `/${path}`]
-      for (const candidate of candidates) {
-        html = html.split(`\"${candidate}\"`).join(`\"${content}\"`)
-        html = html.split(`'${candidate}'`).join(`'${content}'`)
-        html = html.split(`url(${candidate})`).join(`url(${content})`)
-        html = html.split(`url(./${candidate})`).join(`url(${content})`)
-      }
-    }
-    if (path.endsWith('.css') && !path.includes('node_modules')) {
-      html = html.replace('</head>', `<style data-file="${path}">${content}</style>\n</head>`)
-    }
-  }
-
-  const mainFile = files['main.js'] || files['script.js'] || files['app.js']
-  if (mainFile) {
-    html = html.replace('</body>', `<script data-file="main.js">${escapeScript(mainFile)}</script>\n</body>`)
-  }
-
-  return html
 }
 
 export default function Preview({ files }) {
   const iframeRef = useRef(null)
   const previewKey = useStore((s) => s.previewKey)
   const [frameError, setFrameError] = useState(null)
+  const [page, setPage] = useState('index.html')
+  const [notice, setNotice] = useState('')
+  const filesRef = useRef(files)
+  filesRef.current = files
 
   const reactProject = isReactProject(files)
   const hasIndexHtml = Boolean(files?.['index.html'])
 
+  const activePage = files?.[page] ? page : 'index.html'
+
   const srcDoc = useMemo(() => {
     if (reactProject) return buildReactPreview(files)
-    return buildStaticPreview(files)
-  }, [files, reactProject, previewKey])
+    return buildStaticPreview(files, activePage)
+  }, [files, reactProject, previewKey, activePage])
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.source !== iframeRef.current?.contentWindow) return
+      if (event.data?.type !== 'nexus-navigate') return
+      const target = resolvePage(event.data.href, filesRef.current)
+      if (target) {
+        setNotice('')
+        setPage(target)
+      } else {
+        setNotice(`Page not found: ${event.data.href}`)
+        setTimeout(() => setNotice(''), 4000)
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
   useEffect(() => {
     if (!iframeRef.current || !srcDoc) return
@@ -218,8 +211,17 @@ export default function Preview({ files }) {
           <Eye className="w-4 h-4 text-neutral-500" />
           <span className="text-sm font-medium text-neutral-700">Live Preview</span>
           {reactProject && <span className="badge bg-primary-50 text-primary-700">React</span>}
+          {!reactProject && (
+            <span className="text-xs text-neutral-400">{activePage}</span>
+          )}
+          {notice && <span className="text-xs text-error-600">{notice}</span>}
         </div>
         <div className="flex items-center gap-1">
+          {!reactProject && activePage !== 'index.html' && (
+            <button onClick={() => setPage('index.html')} className="btn-ghost btn-sm text-xs">
+              Home
+            </button>
+          )}
           <button
             onClick={() => useStore.getState().refreshPreview()}
             className="btn-ghost btn-sm"
