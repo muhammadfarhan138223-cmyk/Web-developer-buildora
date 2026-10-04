@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   }
 
   if (isRateLimited(req)) {
-    return res.status(429).json({ error: 'Please slow down for a moment. NexusAI will automatically be ready again shortly.', code: 'RATE_LIMITED' })
+    return res.status(429).json({ error: 'Please slow down for a moment. Buildora will automatically be ready again shortly.', code: 'RATE_LIMITED' })
   }
 
   try {
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     const message = typeof body.message === 'string' ? body.message.trim() : ''
 
     if (!message) {
-      return res.status(400).json({ error: 'Tell NexusAI what you want to build or change.' })
+      return res.status(400).json({ error: 'Tell Buildora what you want to build or change.' })
     }
     if (message.length > 20000) {
       return res.status(413).json({ error: 'That request is too large. Please split it into smaller steps.', code: 'MESSAGE_TOO_LARGE' })
@@ -107,7 +107,7 @@ export default async function handler(req, res) {
 
     if (configurationError) {
       return res.status(503).json({
-        error: 'NexusAI needs an AI provider key on the server before it can generate code.',
+        error: 'Buildora needs an AI provider key on the server before it can generate code.',
         code: 'AI_PROVIDER_NOT_CONFIGURED',
       })
     }
