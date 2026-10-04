@@ -12,10 +12,7 @@ export default function Landing() {
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-neutral-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">N</span>
-            </div>
-            <span className="font-bold text-lg text-neutral-900">NexusAI</span>
+            <img src="/buildora-logo.png" alt="Buildora" className="h-8 w-auto" />
           </Link>
           <div className="flex items-center gap-3">
             <Link to="/login" className="btn-ghost btn-sm">Sign In</Link>
@@ -37,7 +34,7 @@ export default function Landing() {
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-neutral-900 tracking-tight text-balance mb-6 animate-slide-up">
             Describe it.{" "}
-            <span className="text-primary-600">NexusAI builds it.</span>
+            <span className="text-primary-600">Buildora builds it.</span>
           </h1>
           <p className="text-lg text-neutral-600 max-w-2xl mx-auto mb-8 text-balance animate-slide-up">
             An AI coding agent that understands your request, inspects your project,
@@ -62,7 +59,7 @@ export default function Landing() {
             How it works
           </h2>
           <p className="text-neutral-600 max-w-2xl mx-auto">
-            NexusAI follows a structured engineering process for every request.
+            Buildora follows a structured engineering process for every request.
           </p>
         </div>
 
@@ -93,7 +90,7 @@ export default function Landing() {
                 Built for real projects
               </h2>
               <p className="text-neutral-600 mb-6">
-                NexusAI works with the technologies you already use. It knows when
+                Buildora works with the technologies you already use. It knows when
                 a project needs just frontend code and when a real backend with
                 database and authentication is required.
               </p>
@@ -157,7 +154,7 @@ export default function Landing() {
           Start building in seconds
         </h2>
         <p className="text-neutral-600 mb-8 max-w-xl mx-auto">
-          Just describe what you want. NexusAI handles the rest.
+          Just describe what you want. Buildora handles the rest.
         </p>
         <Link to="/builder" className="btn-primary">
           Open the Builder
@@ -169,10 +166,8 @@ export default function Landing() {
       <footer className="border-t border-neutral-100 py-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-primary-600 flex items-center justify-center">
-              <span className="text-white font-bold text-xs">N</span>
-            </div>
-            <span className="text-sm text-neutral-500">NexusAI Builder</span>
+            <img src="/favicon-192.png" alt="Buildora" className="w-6 h-6" />
+            <span className="text-sm text-neutral-500">Buildora</span>
           </div>
           <p className="text-xs text-neutral-400">
             Built with React, Vite & Supabase
