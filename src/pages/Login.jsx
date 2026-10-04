@@ -49,10 +49,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">N</span>
-            </div>
-            <span className="font-bold text-xl text-neutral-900">NexusAI</span>
+            <img src="/buildora-logo.png" alt="Buildora" className="h-10 w-auto" />
           </Link>
         </div>
 
