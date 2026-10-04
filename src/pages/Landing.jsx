@@ -1,3 +1,4 @@
+import { LOGO_SRC, ICON_SRC } from '../lib/brandAssets.js'
 import React from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -12,7 +13,7 @@ export default function Landing() {
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-neutral-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <img src="/buildora-logo.png" alt="Buildora" className="h-8 w-auto" />
+            <img src={LOGO_SRC} alt="Buildora" className="h-8 w-auto" />
           </Link>
           <div className="flex items-center gap-3">
             <Link to="/login" className="btn-ghost btn-sm">Sign In</Link>
@@ -166,7 +167,7 @@ export default function Landing() {
       <footer className="border-t border-neutral-100 py-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/favicon-192.png" alt="Buildora" className="w-6 h-6" />
+            <img src={ICON_SRC} alt="Buildora" className="w-6 h-6" />
             <span className="text-sm text-neutral-500">Buildora</span>
           </div>
           <p className="text-xs text-neutral-400">
