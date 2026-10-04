@@ -1,3 +1,4 @@
+import { LOGO_SRC } from '../lib/brandAssets.js'
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signIn, signUp, signInWithProvider } from '../lib/auth.js'
@@ -49,7 +50,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
-            <img src="/buildora-logo.png" alt="Buildora" className="h-10 w-auto" />
+            <img src={LOGO_SRC} alt="Buildora" className="h-10 w-auto" />
           </Link>
         </div>
 
