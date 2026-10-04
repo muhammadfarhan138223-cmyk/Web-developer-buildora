@@ -8,10 +8,5 @@
       "source": "/login",
       "destination": "/"
     }
-  ],
-  "functions": {
-    "api/chat.js": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
