@@ -1,3 +1,4 @@
+import { LOGO_SRC, ICON_SRC } from '../lib/brandAssets.js'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Send, Loader2, CheckCircle2, AlertCircle, FileCode2,
@@ -429,8 +430,8 @@ export default function Builder() {
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <img src="/favicon-192.png" alt="Buildora" className="w-8 h-8 sm:hidden" />
-            <img src="/buildora-logo.png" alt="Buildora" className="hidden sm:block h-7 w-auto" />
+            <img src={ICON_SRC} alt="Buildora" className="w-8 h-8 sm:hidden" />
+            <img src={LOGO_SRC} alt="Buildora" className="hidden sm:block h-7 w-auto" />
           </div>
           <div className="h-6 w-px bg-neutral-200 hidden sm:block" />
           <input
