@@ -91,13 +91,51 @@ export function buildStyleCss(plan) {
 }
 html { scroll-behavior: smooth; }
 body { font-family: '${plan.font}', system-ui, -apple-system, sans-serif; }
+
+@keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes floatBlob { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -40px) scale(1.12); } 66% { transform: translate(-25px, 25px) scale(.94); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 50% { box-shadow: 0 0 0 14px transparent; } }
+
+/* Animated hero / banner background */
+.hero-bg {
+  position: relative; overflow: hidden; color: #fff;
+  background: linear-gradient(120deg, var(--accent), var(--accent-dark), #0f172a, var(--accent));
+  background-size: 300% 300%; animation: gradientShift 16s ease infinite;
+}
+.blob { position: absolute; border-radius: 9999px; filter: blur(48px); opacity: .35; background: #fff; animation: floatBlob 14s ease-in-out infinite; pointer-events: none; }
+.blob-2 { background: var(--accent); opacity: .45; animation-duration: 18s; animation-delay: -5s; }
+.blob-3 { background: #fbbf24; opacity: .25; animation-duration: 22s; animation-delay: -9s; }
+
+/* Soft animated background for alternating sections */
+.soft-bg {
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 10%, #fff), #fff, color-mix(in srgb, var(--accent) 14%, #fff));
+  background-size: 250% 250%; animation: gradientShift 20s ease infinite;
+}
+
+/* Entrance animations (hero text) */
+.fade-up { opacity: 0; animation: fadeUp .8s ease forwards; }
+.d1 { animation-delay: .1s; } .d2 { animation-delay: .3s; } .d3 { animation-delay: .5s; } .d4 { animation-delay: .7s; }
+.float { animation: floatY 5s ease-in-out infinite; }
+.btn-glow { animation: pulseGlow 2.6s ease-in-out infinite; }
+
+/* Scroll animations */
 .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s ease; }
-.reveal.visible { opacity: 1; transform: none; }
+.reveal-left { opacity: 0; transform: translateX(-36px); transition: opacity .7s ease, transform .7s ease; }
+.reveal-right { opacity: 0; transform: translateX(36px); transition: opacity .7s ease, transform .7s ease; }
+.reveal.visible, .reveal-left.visible, .reveal-right.visible { opacity: 1; transform: none; }
+
 .hover-lift { transition: transform .25s ease, box-shadow .25s ease; }
-.hover-lift:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0, 0, 0, .12); }
+.hover-lift:hover { transform: translateY(-6px); box-shadow: 0 14px 28px rgba(0, 0, 0, .14); }
+
+#site-nav { transition: box-shadow .3s ease; }
+#site-nav.nav-scrolled { box-shadow: 0 6px 20px rgba(0, 0, 0, .12); }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .reveal { opacity: 1; transform: none; transition: none; }
+  .hero-bg, .soft-bg, .blob, .float, .btn-glow { animation: none; }
+  .fade-up, .reveal, .reveal-left, .reveal-right { opacity: 1; transform: none; animation: none; transition: none; }
   .hover-lift, .hover-lift:hover { transition: none; transform: none; }
 }
 `
@@ -108,7 +146,14 @@ export const SCRIPT_JS = `(function () {
   var menu = document.getElementById('mobile-menu');
   if (btn && menu) btn.addEventListener('click', function () { menu.classList.toggle('hidden'); });
 
-  var items = document.querySelectorAll('.reveal');
+  var nav = document.getElementById('site-nav');
+  if (nav) {
+    var onScroll = function () { nav.classList.toggle('nav-scrolled', window.scrollY > 8); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+
+  var items = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
   function showAll() { items.forEach(function (el) { el.classList.add('visible'); }); }
   if (!('IntersectionObserver' in window)) { showAll(); return; }
   var io = new IntersectionObserver(function (entries) {
