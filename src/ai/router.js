@@ -10,13 +10,19 @@ const breaker = new CircuitBreaker(
   modelConfig.circuitBreaker.cooldownMs,
 )
 
+function remainingMs(request) {
+  return request.deadline ? request.deadline - Date.now() : Infinity
+}
+
 async function attemptProvider(provider, model, request) {
   return retryWithBackoff(
     async () => {
+      const budget = remainingMs(request) - 1500
+      const timeoutMs = Math.max(4000, Math.min(request.timeoutMs || modelConfig.retry.timeoutMs, budget))
       const result = await sendToProvider(provider, {
         ...request,
         model,
-        timeoutMs: request.timeoutMs || modelConfig.retry.timeoutMs,
+        timeoutMs,
       })
       breaker.recordSuccess(provider)
       return { ...result, provider, model }
@@ -26,8 +32,10 @@ async function attemptProvider(provider, model, request) {
       baseDelayMs: modelConfig.retry.baseDelayMs,
       maxDelayMs: modelConfig.retry.maxDelayMs,
       shouldRetry: (err) => {
+        // A timeout means this provider is slow: fail over to the next one instead of waiting again.
+        if (remainingMs(request) < 20000) return false
         const type = classifyError(err)
-        return type === ErrorType.RATE_LIMIT || type === ErrorType.TIMEOUT || type === ErrorType.OVERLOADED || type === ErrorType.SERVER_ERROR
+        return type === ErrorType.RATE_LIMIT || type === ErrorType.OVERLOADED || type === ErrorType.SERVER_ERROR
       },
     },
   )
@@ -50,6 +58,11 @@ export async function routeRequest(request) {
 
   for (let index = 0; index < chain.length; index += 1) {
     const { provider, model } = chain[index]
+
+    if (remainingMs(request) < 5000) {
+      errors.push(tagError(new Error('Time budget used up'), ErrorType.TIMEOUT))
+      break
+    }
 
     if (breaker.isOpen(provider)) {
       errors.push(tagError(new Error(`Provider temporarily cooling down: ${provider}`), ErrorType.OVERLOADED))
