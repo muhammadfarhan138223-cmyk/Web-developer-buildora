@@ -26,9 +26,9 @@ const DEFAULT_PROJECT_FILES = {
   'main.js': `document.getElementById('app').innerHTML = \`
   <main class="min-h-screen flex items-center justify-center px-6">
     <section class="text-center">
-      <p class="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">NexusAI</p>
+      <p class="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">Buildora</p>
       <h1 class="mt-3 text-4xl font-bold tracking-tight text-gray-900">Your project starts here.</h1>
-      <p class="mt-4 max-w-lg text-gray-600">Describe what you want in the chat and NexusAI will create or update the project files.</p>
+      <p class="mt-4 max-w-lg text-gray-600">Describe what you want in the chat and Buildora will create or update the project files.</p>
     </section>
   </main>
 \`;
