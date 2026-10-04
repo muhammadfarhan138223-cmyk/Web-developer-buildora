@@ -89,6 +89,7 @@ export default async function handler(req, res) {
       temperature,
       maxTokens,
       timeoutMs: 60000,
+      deadline: Date.now() + 240000,
       ...(taskTier ? { taskTier } : {}),
     })
 
