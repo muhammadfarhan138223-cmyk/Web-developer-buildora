@@ -20,7 +20,7 @@ for(const route of publicRoutes) {
   const output=`dist/${route==='/'?'index':route.slice(1)}.html`;await mkdir(path.dirname(output),{recursive:true});
   await writeFile(output,html);
 }
-await writeFile('dist/robots.txt',site?`User-agent: *\nAllow: /\nDisallow: /builder\nDisallow: /projects\nDisallow: /login\nDisallow: /signup\nDisallow: /recover\nDisallow: /reset-password\nDisallow: /settings\nDisallow: /connections\nDisallow: /api/\nSitemap: ${site}/sitemap.xml\n`:'User-agent: *\nDisallow: /\n');
+await writeFile('dist/robots.txt',site?`User-agent: *\nAllow: /\nDisallow: /builder/preview\nDisallow: /projects\nDisallow: /login\nDisallow: /signup\nDisallow: /recover\nDisallow: /reset-password\nDisallow: /settings\nDisallow: /connections\nDisallow: /api/\nSitemap: ${site}/sitemap.xml\n`:'User-agent: *\nDisallow: /\n');
 await writeFile('dist/sitemap.xml',`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${site?publicRoutes.map(r=>`<url><loc>${escape(site+r)}</loc></url>`).join(''):''}</urlset>`);
 
 await writeFile('dist/_redirects','/api/* /.netlify/functions/api/:splat 200!\n'+publicRoutes.map(route=>route+' '+(route==='/'?'/index':route)+'.html 200').join('\n')+'\n/* /index.html 200\n');

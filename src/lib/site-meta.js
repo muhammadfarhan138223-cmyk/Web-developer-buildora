@@ -34,4 +34,5 @@ Object.assign(metadata,{
  '/connections':{title:'Connections | Buildora',description:'Connect your project with GitHub, Supabase and VS Code.'}
 });
 for(const item of templateCatalog)metadata['/templates/'+item.id]={title:`${item.name} template | Buildora`,description:item.description};
+metadata['/builder/work']={title:'Online Code Editor & Live Frontend Preview | Buildora',description:'Edit HTML, CSS, JavaScript, React, Vue and TypeScript in Buildora. Import source files, preview your frontend and export your work. Created by Farhan Balouch.'};
 export const publicRoutes=Object.keys(metadata).filter(route=>!['/login','/signup','/recover','/reset-password','/builder','/settings','/connections','/projects'].includes(route));

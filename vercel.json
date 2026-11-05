@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/builder",
-      "destination": "/index.html"
-    },
-    {
       "source": "/login",
       "destination": "/index.html"
     },
@@ -90,7 +86,7 @@
     },
     {
       "source": "/builder/work",
-      "destination": "/index.html"
+      "destination": "/builder/work.html"
     },
     {
       "source": "/builder/preview",
@@ -125,7 +121,7 @@
       ]
     },
     {
-      "source": "/builder/(chat|work|preview)",
+      "source": "/builder/(chat|preview)",
       "headers": [
         {
           "key": "X-Robots-Tag",
@@ -152,5 +148,17 @@
       "SITE_URL": "https://buildora.farhanbalouch.com",
       "VITE_SITE_URL": "https://buildora.farhanbalouch.com"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/builder",
+      "destination": "/builder/work",
+      "permanent": true
+    },
+    {
+      "source": "/builder/",
+      "destination": "/builder/work",
+      "permanent": true
+    }
+  ]
 }
