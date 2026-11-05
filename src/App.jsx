@@ -1,76 +1,37 @@
-import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import React, { useEffect, lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useStore } from './store.js'
+import { bootstrapBackend } from './lib/backend.js'
+import { initializeAuthClient } from './lib/supabaseClient.js'
 import { onAuthStateChange, getCurrentUser } from './lib/auth.js'
 import Landing from './pages/Landing.jsx'
-import Login from './pages/Login.jsx'
-import Builder from './components/Builder.jsx'
-import { useEffect } from 'react'
+const Login=lazy(()=>import('./pages/Login.jsx'))
+const Info=lazy(()=>import('./pages/Info.jsx'))
+const DetachedPreview=lazy(()=>import('./builder/DetachedPreview.jsx'));
+const Builder=lazy(()=>import('./components/Builder.jsx'))
+import AppBoundary from './components/AppBoundary.jsx';
+import Seo from './components/Seo.jsx'
+const Settings=lazy(()=>import('./pages/Settings.jsx'))
+const Connections=lazy(()=>import('./pages/Connections.jsx'))
+const ContentPage=lazy(()=>import('./pages/ContentPage.jsx'))
 
-function AuthGuard({ children }) {
-  const user = useStore((s) => s.user)
-  const authLoading = useStore((s) => s.authLoading)
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
-        <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center animate-pulse">
-          <span className="text-white font-bold text-sm">N</span>
-        </div>
-      </div>
-    )
-  }
-
-  // Allow access to builder even without auth (guest mode)
-  return children
-}
-
+const Templates=lazy(()=>import('./pages/Templates.jsx'));
+const Projects=lazy(()=>import('./pages/Projects.jsx'));
+const Pricing=lazy(()=>import('./pages/Pricing.jsx'));
 export default function App() {
-  const setUser = useStore((s) => s.setUser)
-  const newProject = useStore((s) => s.newProject)
-
-  useEffect(() => {
-    let subscription = null
-
-    async function initAuth() {
-      const user = await getCurrentUser()
-      setUser(user)
-
-      subscription = onAuthStateChange((session) => {
-        setUser(session?.user || null)
-      })
+  useEffect(()=>{
+    let active=true, subscription
+    async function init(){
+      try {
+        const config=await bootstrapBackend();if(!active)return
+        initializeAuthClient(config);useStore.setState({backendConfig:config,backendError:''})
+        subscription=onAuthStateChange(session=>{if(active)useStore.getState().setUser(session?.user || null)})
+        const user=await getCurrentUser();if(active)useStore.getState().setUser(user)
+      }catch(error){if(active)useStore.setState({user:null,authLoading:false,backendError:error.message})}
     }
-
-    initAuth()
-
-    return () => {
-      if (subscription) subscription.unsubscribe()
-    }
-  }, [setUser])
-
-  // Initialize a default project if none exists
-  useEffect(() => {
-    const state = useStore.getState()
-    if (!state.projectId) {
-      newProject()
-    }
-  }, [newProject])
-
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/builder"
-          element={
-            <AuthGuard>
-              <Builder />
-            </AuthGuard>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  )
+    init()
+    const state=useStore.getState();if(!state.projectId)state.newProject()
+    return()=>{active=false;subscription?.unsubscribe()}
+  },[])
+  return <BrowserRouter><Seo/><AppBoundary><Suspense fallback={<div className="app-loading" role="status">Opening Buildora…</div>}><Routes><Route path="/" element={<Landing/>}/>{['/login','/signup','/recover','/reset-password'].map(path=><Route key={path} path={path} element={<Login key={path}/>}/>)}<Route path="/guide" element={<Info/>}/><Route path="/privacy" element={<Info/>}/><Route path="/settings" element={<Settings/>}/><Route path="/connections" element={<Connections/>}/>{['/features','/about','/terms','/cookies','/acceptable-use','/security','/brand','/contact'].map(path=><Route key={path} path={path} element={<ContentPage/>}/>)}<Route path="/templates" element={<Templates/>}/><Route path="/templates/:id" element={<Templates/>}/><Route path="/projects" element={<Projects/>}/><Route path="/pricing" element={<Pricing/>}/><Route path="/builder/preview" element={<DetachedPreview/>}/><Route path="/builder/*" element={<Builder/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></Suspense></AppBoundary></BrowserRouter>
 }

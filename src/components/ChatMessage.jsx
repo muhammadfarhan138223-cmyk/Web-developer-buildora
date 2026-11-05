@@ -1,0 +1,3 @@
+import React,{useState} from 'react';import ReactMarkdown from 'react-markdown';
+function Block({children}){const [status,setStatus]=useState('Copy code');return <div className="chat-code"><button onClick={async()=>{try{const text=React.Children.toArray(children).map(c=>typeof c==='string'?c:c.props?.children||'').join('');await navigator.clipboard.writeText(text);setStatus('Copied')}catch{setStatus('Copy unavailable')}}}>{status}</button><pre>{children}</pre></div>}
+export default function ChatMessage({text}){return <ReactMarkdown components={{pre:Block,a:({href,children})=><a href={href} target="_blank" rel="noreferrer">{children}</a>}}>{String(text||'')}</ReactMarkdown>}

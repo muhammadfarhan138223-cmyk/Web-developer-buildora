@@ -1,24 +1,37 @@
 {
-  "name": "nexusai-builder",
+  "name": "buildora",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.1.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "node server/dev.mjs",
+    "build": "node server/build.mjs",
+    "preview": "node server/start.mjs",
+    "start": "node server/start.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "doctor": "node server/doctor.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-json": "^6.0.1",
+    "@supabase/supabase-js": "2.117.3",
+    "@tailwindcss/browser": "4.1.14",
+    "@uiw/react-codemirror": "^4.23.0",
+    "@vue/compiler-sfc": "3.5.22",
+    "@webcontainer/api": "^1.6.1",
+    "esbuild-wasm": "0.21.5",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.439.0",
+    "nanoid": "^5.0.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
-    "zustand": "^4.5.5",
-    "lucide-react": "^0.439.0",
     "react-markdown": "^9.0.1",
+    "react-router-dom": "^6.26.2",
     "react-syntax-highlighter": "^15.5.0",
-    "jszip": "^3.10.1",
-    "nanoid": "^5.0.7"
+    "vue": "3.5.22",
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",
@@ -28,5 +41,8 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "vite": "^5.4.8"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

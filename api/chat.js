@@ -1,33 +1,18 @@
+import {buildStepMessages} from '../server/build-step.js';
+import {conversationMessages} from '../server/conversation.js';
 import { buildMessages, buildPlanMessages, buildPageMessages } from '../src/ai/contextManager.js'
 import { routeRequest } from '../src/ai/router.js'
 import { classifyError, ErrorType } from '../src/ai/errorClassifier.js'
-
-const rateBuckets = globalThis.__nexusRateBuckets || new Map()
-globalThis.__nexusRateBuckets = rateBuckets
-const RATE_WINDOW_MS = 60_000
-const RATE_LIMIT = 12
-
-function getClientKey(req) {
-  const forwarded = req.headers?.['x-forwarded-for'] || req.headers?.['x-real-ip'] || 'unknown'
-  return String(forwarded).split(',')[0].trim() || 'unknown'
-}
-
-function isRateLimited(req) {
-  const key = getClientKey(req)
-  const now = Date.now()
-  const bucket = rateBuckets.get(key) || { startedAt: now, count: 0 }
-  if (now - bucket.startedAt >= RATE_WINDOW_MS) {
-    bucket.startedAt = now
-    bucket.count = 0
-  }
-  bucket.count += 1
-  rateBuckets.set(key, bucket)
-  return bucket.count > RATE_LIMIT
-}
+import { authorize, enforceLimit, validateBody } from '../server/access.js'
+import { generateWithRouting, generateWithKey } from '../server/byok.js'
 
 export default async function handler(req, res) {
+  const origin = req.headers?.origin
+  if (origin) {
+    try { if (new URL(origin).host !== req.headers.host) return res.status(403).json({ error: 'Cross-origin API requests are not allowed.' }) }
+    catch { return res.status(403).json({ error: 'Invalid origin.' }) }
+  }
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     return res.status(200).end()
@@ -36,8 +21,15 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+  if (!String(req.headers?.['content-type'] || '').includes('application/json')) return res.status(415).json({ error: 'Use application/json.' })
 
-  if (isRateLimited(req)) {
+  try { validateBody(req.body || {}) } catch (e) { return res.status(400).json({ error: e.message }) }
+  let userId
+  try { userId = req.body?.connection ? 'guest:'+req.socket?.remoteAddress : await authorize(req) } catch (e) {
+    if(e.status===401 && (req.body?.connection || process.env.ALLOW_GUEST_AI==='true')) userId='guest:'+req.socket?.remoteAddress;
+    else return res.status(e.status || 503).json({ error: e.status===401 ? 'Start building without an account: add your own API key in Settings. Create an account only when saving or exporting.' : e.status ? e.message : 'Authentication service unavailable.' });
+  }
+  if (!enforceLimit(userId)) {
     return res.status(429).json({ error: 'Please slow down for a moment. Buildora will automatically be ready again shortly.', code: 'RATE_LIMITED' })
   }
 
@@ -58,7 +50,11 @@ export default async function handler(req, res) {
     let temperature = 0.35
     let taskTier
 
-    if (mode === 'plan') {
+    if (mode === 'conversation') {
+      messages=conversationMessages(body);maxTokens=8000;
+    } else if (mode === 'build-plan' || mode === 'build-file') {
+      messages=buildStepMessages(body);maxTokens=mode==='build-plan'?4000:6000;
+    } else if (mode === 'plan') {
       messages = buildPlanMessages(message)
       maxTokens = 1500
       temperature = 0.3
@@ -84,7 +80,7 @@ export default async function handler(req, res) {
       messages = buildMessages(message, projectContext, conversationHistory)
     }
 
-    const result = await routeRequest({
+    const result = body.connection ? mode==='conversation' ? await generateWithKey({...body.connection,allowPartial:true},messages,maxTokens) : await generateWithRouting(body.connection,messages,maxTokens) : await routeRequest({
       messages,
       temperature,
       maxTokens,
@@ -102,12 +98,13 @@ export default async function handler(req, res) {
       fallbackIndex: result.fallbackIndex,
     })
   } catch (error) {
+    if(req.body?.connection && error.status) return res.status(error.status).json({error:error.message,code:error.code,retryAfterMs:error.retryAfterMs});
     const type = classifyError(error)
     const configurationError = Boolean(error.__configurationError)
 
     if (configurationError) {
       return res.status(503).json({
-        error: 'Buildora needs an AI provider key on the server before it can generate code.',
+        error: 'AI is not configured. Add your OpenRouter key for free models, or connect an installed Ollama model. See the Setup guide. Your editor and saved projects still work.',
         code: 'AI_PROVIDER_NOT_CONFIGURED',
       })
     }

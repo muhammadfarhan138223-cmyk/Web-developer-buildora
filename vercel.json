@@ -2,11 +2,155 @@
   "rewrites": [
     {
       "source": "/builder",
-      "destination": "/"
+      "destination": "/index.html"
     },
     {
       "source": "/login",
-      "destination": "/"
+      "destination": "/index.html"
+    },
+    {
+      "source": "/signup",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/recover",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/connections",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/guide",
+      "destination": "/guide.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/features",
+      "destination": "/features.html"
+    },
+    {
+      "source": "/about",
+      "destination": "/about.html"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/pricing.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
+      "source": "/cookies",
+      "destination": "/cookies.html"
+    },
+    {
+      "source": "/acceptable-use",
+      "destination": "/acceptable-use.html"
+    },
+    {
+      "source": "/security",
+      "destination": "/security.html"
+    },
+    {
+      "source": "/contact",
+      "destination": "/contact.html"
+    },
+    {
+      "source": "/brand",
+      "destination": "/brand.html"
+    },
+    {
+      "source": "/projects",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/templates",
+      "destination": "/templates.html"
+    },
+    {
+      "source": "/templates/:id",
+      "destination": "/templates/:id.html"
+    },
+    {
+      "source": "/builder/chat",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/builder/work",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/builder/preview",
+      "destination": "/index.html"
     }
-  ]
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "value": "same-origin",
+          "key": "Cross-Origin-Opener-Policy"
+        },
+        {
+          "value": "credentialless",
+          "key": "Cross-Origin-Embedder-Policy"
+        },
+        {
+          "value": "nosniff",
+          "key": "X-Content-Type-Options"
+        }
+      ]
+    },
+    {
+      "source": "/(builder|projects|login|signup|recover|reset-password|settings|connections)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/builder/(chat|work|preview)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    }
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "framework": "vite",
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60
+    }
+  },
+  "env": {
+    "SITE_URL": "https://buildora.farhanbalouch.com",
+    "VITE_SITE_URL": "https://buildora.farhanbalouch.com"
+  },
+  "build": {
+    "env": {
+      "SITE_URL": "https://buildora.farhanbalouch.com",
+      "VITE_SITE_URL": "https://buildora.farhanbalouch.com"
+    }
+  }
 }

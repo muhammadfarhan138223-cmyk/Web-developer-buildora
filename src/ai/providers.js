@@ -50,8 +50,8 @@ export async function sendOpenRouter({ messages, model, temperature = 0.7, maxTo
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'https://nexusai.builder',
-        'X-Title': 'NexusAI Builder',
+        ...(process.env.OPENROUTER_SITE_URL ? { 'HTTP-Referer': process.env.OPENROUTER_SITE_URL } : {}),
+        'X-Title': 'Buildora',
       },
       body: JSON.stringify({
         model,
@@ -182,7 +182,12 @@ export async function sendOpenAI({ messages, model, temperature = 0.7, maxTokens
   }
 }
 
-const providers = { openrouter: sendOpenRouter, gemini: sendGemini, groq: sendGroq, openai: sendOpenAI }
+export async function sendOllama({messages,model,temperature=0.35,maxTokens,timeoutMs=DEFAULT_TIMEOUT}) {
+  const base = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/$/,'')
+  const data=await fetchJson(`${base}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages,stream:false,options:{temperature,...(maxTokens?{num_predict:maxTokens}:{})}})},'Ollama',timeoutMs)
+  return {content:assertContent(data.message?.content || '', 'Ollama'),usage:null}
+}
+const providers = { openrouter: sendOpenRouter, gemini: sendGemini, groq: sendGroq, openai: sendOpenAI, ollama:sendOllama }
 
 export async function sendToProvider(provider, request) {
   const fn = providers[provider]

@@ -1,0 +1,10 @@
+node_modules
+dist
+.buildora
+.buildora-build
+.git
+.env
+.env.*
+*.sqlite*
+FULL-CODE.md
+AUDIT.md

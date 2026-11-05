@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {conversationMessages} from '../server/conversation.js';
+import {detectCode,extractChatFiles,arrangeFiles} from '../src/builder/chatFiles.js';
+import {detectFrontend} from '../src/builder/frontendCompiler.js';
+test('conversation greeting stays a normal user turn without build protocol',()=>{const messages=conversationMessages({message:'hi',conversationHistory:[]});assert.equal(messages.at(-1).content,'hi');assert.match(messages[0].content,/A greeting is only a greeting/);assert.equal(messages.length,2)});
+test('code blocks arrange at their explicit paths and preserve unrelated files',()=>{const changes=extractChatFiles('```html filename=index.html\n<h1>Hello</h1>\n```\n```css filename=src/style.css\nh1{color:red}\n```');assert.equal(changes['src/style.css'],'h1{color:red}\n');assert.equal(arrangeFiles({'notes.md':'keep'},changes)['notes.md'],'keep');assert.throws(()=>extractChatFiles('```js filename=../unsafe.js\nconst x=1\n```'));assert.throws(()=>extractChatFiles('```html\n<h1>unfinished'),/unfinished/)});
+test('paste detects frontend languages and rejects backend',()=>{for(const [code,language] of [['<h1>Hello</h1>','html'],['body{color:red}','css'],['const x=1','js'],['const x:number=1','ts'],['export default function App(){return <h1>Hello</h1>}','jsx'],['export default function App(){const x:number=1;return <h1>{x}</h1>}','tsx']])assert.equal(detectCode(code).language,language);assert.throws(()=>detectCode('def hello():\n print(1)'),/backend/)});
+test('empty HTML shell does not conceal a React entry',()=>{assert.equal(detectFrontend({'index.html':'<html><body><div id="root"></div></body></html>','src/main.jsx':'console.log(1)'}).entry,'src/main.jsx')});

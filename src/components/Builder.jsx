@@ -1,738 +1,278 @@
-import { LOGO_SRC, ICON_SRC } from '../lib/brandAssets.js'
-import React, { useState, useRef, useEffect, useCallback } from 'react'
-import {
-  Send, Loader2, CheckCircle2, AlertCircle, FileCode2,
-  Trash2, Eye, Code2, MessageSquare, Plus, Download, Save, Upload, CloudDownload, Database,
-} from 'lucide-react'
-import { useStore } from '../store.js'
-import { loadConversations, loadProject, loadProjects, saveConversation, saveProject } from '../lib/database.js'
-import { parseAIResponse } from '../ai/responseParser.js'
-import { scanProject } from '../lib/projectScanner.js'
-import { runSitePipeline, createApiCaller, isSiteRequest, isResumeRequest } from '../lib/siteBuilder.js'
-import CodeView from './CodeView.jsx'
-import Preview from './Preview.jsx'
-import JSZip from 'jszip'
-import { configureSupabase, getSupabaseConfig } from '../lib/supabaseClient.js'
+import ImportSource from '../builder/ImportSource.jsx';
+import PasteCode from '../builder/PasteCode.jsx';
+import {extractChatFiles,arrangeFiles} from '../builder/chatFiles.js';
+import {useBuilderDialog} from '../builder/useBuilderDialog.jsx';
+import {scanProject} from '../lib/projectScanner.js';
 
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowUp, ArrowUpRight, Plus, Download, Upload, Sun, Moon, PanelsTopLeft, Code2, Eye, Database, Save, CloudDownload, X, Sparkles, Loader2, Folder, MessageSquare, MoreHorizontal, PanelLeftClose } from 'lucide-react';
+import JSZip from 'jszip';
+import { useStore } from '../store.js';
+import { validateFiles, validPath, MAX_BYTES } from '../lib/files.js';
+import {reactStarterFiles} from '../lib/reactStarter.js';
+import { fullstackFiles } from '../lib/templates.js';
+import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { saveProject, saveConversation, loadProjects, loadProject, loadConversations, deleteProject } from '../lib/database.js';
+import { api } from '../lib/backend.js';
+import { signOut } from '../lib/auth.js';
+import CodeView from './CodeView.jsx';
+import FrontendPreview from '../builder/FrontendPreview.jsx';
+import './workspace.css';
+import './studio.css';
+import './coding-studio.css';
+import '../builder/hybrid.css';
+import '../builder/work-polish.css';
+import ChatMessage from './ChatMessage.jsx';
+import {usePreferences,aiCredentials} from '../lib/preferences.js';
 export default function Builder() {
-  const [input, setInput] = useState('')
-  const [view, setView] = useState('chat')
-  const [showSupabase, setShowSupabase] = useState(false)
-  const [supabaseUrl, setSupabaseUrl] = useState(() => getSupabaseConfig()?.url || '')
-  const [supabaseKey, setSupabaseKey] = useState('')
-  const [supabaseStatus, setSupabaseStatus] = useState(null)
-  const messagesEndRef = useRef(null)
-  const textareaRef = useRef(null)
-  const importInputRef = useRef(null)
-  const siteJobRef = useRef(null)
-
-  const {
-    conversation, addMessage, isGenerating, setGenerating,
-    progress, updateProgress, clearProgress,
-    generatingError, setGeneratingError,
-    projectFiles, applyOperations, refreshPreview,
-    projectName, setProjectName, newProject, activeFile, setActiveFile, user,
-  } = useStore()
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [])
-
+  const navigate=useNavigate(),location=useLocation(),prefs=usePreferences();
+  const {confirm:confirmAction,prompt:promptAction,dialog}=useBuilderDialog();
+  const [chats,setChats]=useState(()=>{try{return JSON.parse(localStorage.getItem('buildora-chat-library')||'[]')}catch{return []}});
+  const [chatId,setChatId]=useState(null);
+  useEffect(()=>{localStorage.setItem('buildora-chat-library',JSON.stringify(chats))},[chats]);
+  const mode=location.pathname.endsWith('/chat')?'chat':'work';
+  useEffect(()=>{document.title=(mode==='work'?'Work':'Chat')+' | Buildora'},[mode]);
+  const [aiOpen,setAiOpen]=useState(false),[filesOpen,setFilesOpen]=useState(false),[workTab,setWorkTab]=useState('code'),[split,setSplit]=useState(48);
+  const drawer=useRef(),splitArea=useRef();
+  const [pasteOpen,setPasteOpen]=useState(false);
+  useEffect(()=>{if(!['/builder','/builder/','/builder/chat','/builder/work'].includes(location.pathname))navigate('/builder/chat',{replace:true})},[location.pathname]);
+  useEffect(()=>{if(!aiOpen)return;const previous=document.activeElement;drawer.current?.querySelector('textarea')?.focus();const key=e=>{if(e.key==='Escape'){setAiOpen(false);return}if(e.key==='Tab'){const elements=[...drawer.current.querySelectorAll('button:not(:disabled),a[href],textarea:not(:disabled),input:not([hidden]):not(:disabled),summary')].filter(el=>el.getClientRects().length);const first=elements[0],last=elements.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}};document.addEventListener('keydown',key);return()=>{document.removeEventListener('keydown',key);previous?.focus()}},[aiOpen]);
+  useEffect(()=>{const key=e=>{if(e.key==='Escape')setFilesOpen(false)};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[]);
+  const s = useStore(),
+    [theme,setTheme]=useState(()=>localStorage.getItem('buildora-theme')||'dark'),
+    [layout, setLayout] = useState('split'),
+    [input, setInput] = useState(() => new URLSearchParams(window.location.search).get('prompt') || ''),
+    [notice, setNotice] = useState(''),
+    [busy, setBusy] = useState(false),
+    [settings, setSettings] = useState(false),
+    [cloud, setCloud] = useState(null),
+    [history, setHistory] = useState(null),
+    [review, setReview] = useState(null),
+    [buildState,setBuildState] = useState(null),
+    [recovery,setRecovery] = useState(null),[mobileView,setMobileView]=useState('chat'),[chatWidth,setChatWidth]=useState(330),[codeWidth,setCodeWidth]=useState(50),[attachments,setAttachments]=useState([]);
+  const upload = useRef(),attachmentInput=useRef(),
+    controller = useRef(),
+    end = useRef(),
+    busyRef = useRef(false);
+  const locked = busy || !!review;
   useEffect(() => {
-    scrollToBottom()
-  }, [conversation, scrollToBottom])
-
+    localStorage.setItem('buildora-theme', theme);
+  }, [theme]);
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 160) + 'px'
+    if(!s.conversation.length&&!busy)return;
+    end.current?.scrollIntoView({
+      behavior: 'smooth'
+    });
+  }, [s.conversation, busy]);
+  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    const handler = () => setNotice('Browser storage is full or unavailable. Export your ZIP now; this workspace may not survive a reload.');
+    window.addEventListener('buildora-storage-error', handler);
+    return () => window.removeEventListener('buildora-storage-error', handler);
+  }, []);
+  function notifyError(e) {
+    setNotice(e.message || 'Something went wrong.');
+  }
+  async function generate() {
+    const message=input.trim();if(!message||busyRef.current)return;
+    busyRef.current=true;setBusy(true);setInput('');setNotice('');setRecovery(null);setBuildState(null);
+    const previous=s.conversation;const id=chatId||crypto.randomUUID();setChatId(id);
+    s.addMessage({role:'user',content:message});controller.current=new AbortController();
+    try{
+      const session=await getSupabaseClient()?.auth.getSession();const token=session?.data?.session?.access_token;
+      const result=await api('/api/chat',{method:'POST',signal:AbortSignal.any([controller.current.signal,AbortSignal.timeout(120000)]),headers:token?{Authorization:'Bearer '+token}:{},body:JSON.stringify({mode:'conversation',message,conversationHistory:previous.slice(-12).map(m=>({role:m.role,content:(m.content||m.text||"").slice(0,6000)})),projectContext:{files:scanProject(s.projectFiles,message).files},connection:aiCredentials()})});
+      s.addMessage({role:'assistant',content:result.content});
+    }catch(e){setNotice(e.name==='AbortError'?'Response stopped. Your files are unchanged.':e.message);s.addMessage({role:'assistant',content:'The provider could not finish this response. Your files have not changed. You can send another message when ready.',isError:true})}
+    finally{setChats(items=>{const old=items.find(c=>c.id===id);return [...items.filter(c=>c.id!==id),{...old,id,title:old?.title||message.slice(0,45),messages:useStore.getState().conversation}]});busyRef.current=false;setBusy(false)}
+  }
+  function stageAnswer(text){try{const changes=extractChatFiles(text);if(!Object.keys(changes).length)throw new Error('No complete frontend files found.');setReview({projectId:s.projectId,before:{...s.projectFiles},files:arrangeFiles(s.projectFiles,changes),operations:Object.entries(changes).map(([path,content])=>({type:'write',path,content})),text:'Only these files will be added or replaced. Other files stay unchanged.'})}catch(e){setNotice(e.message)}}
+  async function manageChat(chat,action){if(action==='pin')setChats(items=>items.map(c=>c.id===chat.id?{...c,pinned:!c.pinned}:c));if(action==='rename'){const title=await promptAction('Conversation name',chat.title);if(title?.trim())setChats(items=>items.map(c=>c.id===chat.id?{...c,title:title.trim()}:c))}if(action==='delete'&&await confirmAction('Remove this conversation from this device? Project files stay unchanged.')){setChats(items=>items.filter(c=>c.id!==chat.id));if(chatId===chat.id){setChatId(null);s.setConversation([])}}}
+  function accept() {
+    if (!review || s.projectId !== review.projectId) return;
+    try{localStorage.removeItem('buildora-build-checkpoint:'+s.projectId)}catch{}
+    setHistory(review.before);
+    s.setProjectFiles(review.files);
+    s.setActiveFile(Object.keys(review.files).sort()[0] || null);
+    s.addMessage({
+      role: 'assistant',
+      content: review.text || review.summary || 'Updated your project.',
+      changed: review.operations.map(o => `${o.type}: ${o.path}`)
+    });
+    setReview(null);setBuildState(null);setRecovery(null);
+    setAiOpen(false);setWorkTab('preview');navigate('/builder/work');
+    setNotice('Changes applied. Your frontend preview updates automatically.');
+  }
+  async function newProject(fullstack = false) {
+    if (!await confirmAction('Create a new project? Export or cloud-save your current work first.')) return;
+    s.newProject();
+    useStore.getState().setProjectFiles({'index.html':''});
+    if (fullstack) {
+      useStore.getState().setProjectFiles({
+        ...(fullstack === 'react' ? reactStarterFiles : fullstackFiles)
+      });
+      useStore.getState().setProjectName(fullstack === 'react' ? 'Forma / React studio' : 'Notes / Full-stack starter');
     }
-  }, [input])
-
-  async function handleSend() {
-    const message = input.trim()
-    if (!message || isGenerating) return
-
-    setInput('')
-    addMessage({ role: 'user', content: message, timestamp: Date.now() })
-    setGenerating(true)
-    setGeneratingError(null)
-    clearProgress()
-
-    // Websites are built page by page so free models never have to write everything in one reply.
-    const resumeJob = isResumeRequest(message) && siteJobRef.current?.remaining?.length ? siteJobRef.current : null
-    if (resumeJob || isSiteRequest(message, projectFiles)) {
-      await runSiteBuilder(message, resumeJob)
-      return
-    }
-
-    const steps = [
-      { label: 'Understanding request', icon: 'understand' },
-      { label: 'Analyzing project', icon: 'inspect' },
-      { label: 'Planning implementation', icon: 'plan' },
-      { label: 'Generating code', icon: 'implement' },
-      { label: 'Checking generated files', icon: 'validate' },
-    ]
-
-    const createdSteps = steps.map((s) => ({ ...s, id: Math.random().toString(36), status: 'pending' }))
-    useStore.setState({ progress: createdSteps })
-
+    setHistory(null);
+    setNotice('');
+  }
+  async function exportZip() {
+    if(!s.user){navigate("/signup?next=/builder&intent=export");return;}
     try {
-      // Step 1: Understanding
-      updateStep(0, 'active')
-      const projectContext = scanProject(projectFiles)
-      await sleep(300)
-      updateStep(0, 'done')
-
-      // Step 2: Inspecting
-      updateStep(1, 'active')
-      await sleep(300)
-      updateStep(1, 'done')
-
-      // Step 3: Planning
-      updateStep(2, 'active')
-      await sleep(400)
-      updateStep(2, 'done')
-
-      // Step 4: Implementing — call the API
-      updateStep(3, 'active')
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          projectContext,
-          conversationHistory: conversation.filter((m) => !m.isError).map((m) => ({
-            role: m.role,
-            content: m.role === 'assistant'
-              ? (m.text || (m.operations?.length ? `Updated files: ${m.operations.map((o) => o.path).join(', ')}` : m.content))
-              : m.content,
-          })),
-        }),
-      })
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}))
-        throw new Error(errData.error || `Request failed (${response.status})`)
+      const session=await getSupabaseClient()?.auth.getSession();
+      const token=session?.data?.session?.access_token;
+      const {archive}=await api('/api/export',{method:'POST',headers:token?{Authorization:`Bearer ${token}`}:{},body:JSON.stringify({files:s.projectFiles})});
+      const bytes=Uint8Array.from(atob(archive),c=>c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes],{type:'application/zip'})),
+        a = document.createElement('a');
+      a.href = url;
+      a.download = `${s.projectName.replace(/[^a-z0-9_-]/gi, '-') || 'buildora-project'}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      notifyError(e);
+    }
+  }
+  async function importZip(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      if (file.size > MAX_BYTES) throw new Error('Choose a ZIP smaller than 3 MB without node_modules.');
+      const zip = await JSZip.loadAsync(file),
+        entries = Object.values(zip.files).filter(f => !f.dir && !/(^|\/)(node_modules|\.git|dist)\//.test(f.name) && !/(^|\/)\.env(\.|$)/.test(f.name));
+      if (!entries.length || entries.length > 400) throw new Error('ZIP must contain 1–400 source files.');
+      const wrapper = entries.every(f => f.name.includes('/') && f.name.split('/')[0] === entries[0].name.split('/')[0]) ? entries[0].name.split('/')[0] + '/' : '';
+      const files = {};
+      let total = 0;
+      for (const entry of entries) {
+        const path = entry.name.slice(wrapper.length);
+        if (!validPath(path) || entry.unsafeOriginalName && entry.unsafeOriginalName !== entry.name) throw new Error('ZIP contains an unsafe path.');
+        const bytes = await new Promise((resolve, reject) => {
+          const chunks = [];
+          let size = 0;
+          const stream = entry.internalStream('uint8array');
+          stream.on('data', chunk => {
+            size += chunk.length;
+            total += chunk.length;
+            if (total > MAX_BYTES) {
+              stream.pause();
+              reject(new Error('Expanded ZIP exceeds 3 MB.'));
+            } else chunks.push(chunk);
+          }).on('error', reject).on('end', () => {
+            const result = new Uint8Array(size);
+            let offset = 0;
+            for (const chunk of chunks) {
+              result.set(chunk, offset);
+              offset += chunk.length;
+            }
+            resolve(result);
+          }).resume();
+        });
+        const binary = /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|pdf)$/i.test(path);
+        if (binary) {
+          let raw = '';
+          for (let i = 0; i < bytes.length; i += 8192) raw += String.fromCharCode(...bytes.subarray(i, i + 8192));
+          const ext = path.split('.').pop().toLowerCase();
+          const mime = {
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            gif: 'image/gif',
+            webp: 'image/webp',
+            ico: 'image/x-icon',
+            woff: 'font/woff',
+            woff2: 'font/woff2',
+            ttf: 'font/ttf',
+            pdf: 'application/pdf'
+          };
+          files[path] = `data:${mime[ext]};base64,${btoa(raw)}`;
+        } else files[path] = new TextDecoder('utf-8', {
+          fatal: true
+        }).decode(bytes);
       }
-
-      const data = await response.json()
-
-      // Parse and validate file operations before applying anything.
-      const parsed = parseAIResponse(data.content)
-      if (parsed.malformed?.length) {
-        throw new Error(`AI ne ${parsed.malformed.join(', ')} ka code poora nahi bheja. Dobara try karo.`)
-      }
-      const validation = validateOperations(parsed.operations)
-      if (!validation.ok) throw new Error(validation.error)
-
-      if (parsed.operations.length > 0) {
-        applyOperations(parsed.operations)
-        refreshPreview()
-      }
-
-      updateStep(3, 'done')
-
-      // Step 5: Validate generated file structure.
-      updateStep(4, 'active')
-      await sleep(200)
-      updateStep(4, 'done')
-
-      addMessage({
-        role: 'assistant',
-        content: data.content,
-        text: parsed.text,
-        summary: parsed.summary,
-        operations: parsed.operations,
-        provider: data.provider,
-        model: data.model,
-        providerNotice: data.fallbackIndex > 0 ? 'The AI automatically switched to another available provider.' : null,
-        timestamp: Date.now(),
-      })
-
-      // Persist when Supabase is connected; local persistence remains the fallback.
-      if (user?.id) {
-        const latest = useStore.getState()
-        await saveProject(user.id, {
-          id: latest.projectId,
-          name: latest.projectName,
-          files: latest.projectFiles,
-          framework: latest.projectFiles['package.json'] ? 'react' : 'html',
-        })
-        await saveConversation(user.id, latest.projectId, latest.conversation)
-      }
+      validateFiles(files);
+      if (!await confirmAction('Replace the current workspace with this ZIP? Export your work first if needed.')) return;
+      s.newProject();
+    useStore.getState().setProjectFiles({'index.html':''});
+      useStore.getState().setProjectFiles(files);
+      useStore.getState().setProjectName(file.name.replace(/\.zip$/i, ''));
+      s.setActiveFile(Object.keys(files).sort()[0]);
+      setHistory(null);
+      setNotice(`Imported ${Object.keys(files).length} files.`);
     } catch (err) {
-      updateStep(-1, 'error')
-      setGeneratingError(err.message || 'Something went wrong')
-      addMessage({
-        role: 'assistant',
-        content: `I ran into an issue: ${err.message || 'Unknown error'}. Please try again.`,
-        isError: true,
-        timestamp: Date.now(),
-      })
-    } finally {
-      setGenerating(false)
+      notifyError(err);
     }
   }
-
-
-  async function runSiteBuilder(message, resumeJob) {
+  async function save() {
+    if (!s.user) {navigate('/signup?next=/builder&intent=save');return;}
     try {
-      const result = await runSitePipeline({
-        message,
-        job: resumeJob,
-        callApi: createApiCaller(),
-        writeFile: (path, content) => {
-          applyOperations([{ type: 'write', path, content }])
-          refreshPreview()
-        },
-        onProgress: ({ labels, statuses }) => {
-          useStore.setState({
-            progress: labels.map((label, i) => ({ label, icon: 'implement', id: `site-${i}`, status: statuses[i] })),
-          })
-        },
-      })
-
-      siteJobRef.current = result.job?.remaining?.length ? result.job : null
-      const operations = result.written.map((path) => ({ type: 'write', path }))
-      const pageFiles = result.written.filter((path) => path.endsWith('.html'))
-
-      if (result.finished) {
-        const summary = `Your website "${result.job.plan.siteName}" is ready with ${result.job.plan.pages.length} pages: ${result.job.plan.pages.map((p) => p.file).join(', ')}. Open Preview and click the menu links to move between pages.`
-        addMessage({ role: 'assistant', content: summary, text: summary, operations, timestamp: Date.now() })
-      } else {
-        const left = result.job?.remaining?.length ? ` Remaining: ${result.job.remaining.join(', ')}. Send "continue" to finish them.` : ''
-        const done = pageFiles.length ? ` Created: ${pageFiles.join(', ')}.` : ''
-        const text = `I could not finish the website: ${result.error?.message || 'unknown error'}.${done}${left}`
-        setGeneratingError(result.error?.message || 'Could not finish the website')
-        addMessage({ role: 'assistant', content: text, text, operations, isError: true, timestamp: Date.now() })
-      }
-
-      if (user?.id && result.written.length) {
-        const latest = useStore.getState()
-        await saveProject(user.id, {
-          id: latest.projectId,
-          name: latest.projectName,
-          files: latest.projectFiles,
-          framework: 'html',
-        })
-        await saveConversation(user.id, latest.projectId, latest.conversation)
-      }
-    } catch (err) {
-      setGeneratingError(err.message || 'Something went wrong')
-      addMessage({
-        role: 'assistant',
-        content: `I ran into an issue: ${err.message || 'Unknown error'}.`,
-        isError: true,
-        timestamp: Date.now(),
-      })
-    } finally {
-      setGenerating(false)
+      const result = await saveProject(s.user.id, {
+        id: s.projectId,
+        name: s.projectName,
+        files: s.projectFiles
+      });
+      if (result.error) throw result.error;
+      const conversation = await saveConversation(s.user.id, s.projectId, s.conversation);
+      if (conversation.error) throw conversation.error;
+      setNotice('Project and conversation saved to your account.');
+    } catch (e) {
+      notifyError(e);
     }
   }
-
-  function handleConnectSupabase(event) {
-    event.preventDefault()
+  async function showCloud() {
+    if (!s.user) return setNotice('Sign in to browse your saved projects.');
     try {
-      configureSupabase(supabaseUrl, supabaseKey)
-      setSupabaseStatus('Supabase connected. Reloading the builder…')
-      window.setTimeout(() => window.location.reload(), 500)
-    } catch (error) {
-      setSupabaseStatus(error.message || 'Could not connect Supabase.')
+      const result = await loadProjects(s.user.id);
+      if (result.error) throw result.error;
+      setCloud(result.data);
+    } catch (e) {
+      notifyError(e);
     }
   }
-
-  async function handleLoadCloud() {
-    if (!user?.id) {
-      setGeneratingError('Sign in to load projects from Supabase.')
-      return
-    }
-
-    const { data: projects, error } = await loadProjects(user.id)
-    if (error) {
-      setGeneratingError(error.message || 'Could not load your cloud projects.')
-      return
-    }
-
-    const latest = projects?.[0]
-    if (!latest) {
-      addMessage({ role: 'assistant', content: 'No saved cloud projects were found for this account.', timestamp: Date.now() })
-      return
-    }
-
-    const { data: project, error: projectError } = await loadProject(latest.id)
-    if (projectError || !project) {
-      setGeneratingError(projectError?.message || 'Could not load the selected project.')
-      return
-    }
-
-    const { data: conversations } = await loadConversations(user.id, latest.id)
-    useStore.getState().setProject({
-      id: project.id,
-      name: project.name,
-      files: project.files || {},
-    })
-    useStore.setState({
-      conversation: conversations?.[0]?.messages || [],
-      activeFile: project.files?.['index.html'] ? 'index.html' : Object.keys(project.files || {}).sort()[0] || null,
-    })
-    refreshPreview()
-    addMessage({ role: 'assistant', content: `Loaded “${project.name}” from Supabase.`, timestamp: Date.now() })
-  }
-
-  async function handleSave() {
-    if (!user?.id) {
-      addMessage({
-        role: 'assistant',
-        content: 'Your project is already saved locally on this device. Sign in and connect Supabase to sync it to the cloud.',
-        timestamp: Date.now(),
-      })
-      return
-    }
-
-    const state = useStore.getState()
-    const { error } = await saveProject(user.id, {
-      id: state.projectId,
-      name: state.projectName,
-      files: state.projectFiles,
-      framework: state.projectFiles['package.json'] ? 'react' : 'html',
-    })
-
-    if (error) {
-      setGeneratingError(error.message || 'Could not save the project.')
-      return
-    }
-
-    await saveConversation(user.id, state.projectId, state.conversation)
-    addMessage({ role: 'assistant', content: 'Project saved to Supabase.', timestamp: Date.now() })
-  }
-
-  function validateOperations(operations) {
-    for (const op of operations || []) {
-      if (!op?.path || op.path.startsWith('/') || op.path.includes('..') || op.path.includes('\\')) {
-        return { ok: false, error: `Invalid file path returned by the AI: ${op?.path || 'unknown'}` }
-      }
-      if (!['write', 'delete'].includes(op.type)) {
-        return { ok: false, error: `Unsupported file operation for ${op.path}.` }
-      }
-      if (op.type === 'write' && typeof op.content !== 'string') {
-        return { ok: false, error: `Invalid file content for ${op.path}.` }
-      }
-    }
-    return { ok: true }
-  }
-
-  function updateStep(index, status) {
-    const state = useStore.getState()
-    if (index < 0) {
-      // mark all as error
-      useStore.setState({
-        progress: state.progress.map((p) => ({ ...p, status: 'error' })),
-      })
-      return
-    }
-    useStore.setState({
-      progress: state.progress.map((p, i) =>
-        i === index ? { ...p, status } : p.status === 'active' ? { ...p, status: 'done' } : p
-      ),
-    })
-  }
-
-  function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms))
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  function mimeForPath(path) {
-    const ext = path.split('.').pop()?.toLowerCase()
-    const map = {
-      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
-      ico: 'image/x-icon', avif: 'image/avif', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav',
-      woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', pdf: 'application/pdf', zip: 'application/zip',
-    }
-    return map[ext] || 'application/octet-stream'
-  }
-
-  async function handleImportZip(event) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-
+  async function openCloud(id) {
     try {
-      const zip = await JSZip.loadAsync(file)
-      const imported = {}
-
-      for (const [path, entry] of Object.entries(zip.files)) {
-        if (entry.dir) continue
-        if (path.includes('node_modules/') || path.includes('.git/')) continue
-        if (/^\.env(?:\.|$)/i.test(path.split('/').pop() || '')) continue
-        const normalizedPath = path.replace(/^\.\//, '')
-        const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|avif|mp4|webm|mp3|wav|woff2?|ttf|otf|pdf|zip)$/i.test(normalizedPath)
-        imported[normalizedPath] = isBinary
-          ? `data:${mimeForPath(normalizedPath)};base64,${await entry.async('base64')}`
-          : await entry.async('string')
-      }
-
-      if (!Object.keys(imported).length) throw new Error('The ZIP does not contain readable project files.')
-
-      // Bolt/GitHub downloads often wrap the project in one top-level folder.
-      // Remove that wrapper so the builder sees package.json/src at the project root.
-      const paths = Object.keys(imported)
-      const firstSegments = new Set(paths.map((path) => path.split('/')[0]))
-      const wrapper = firstSegments.size === 1 && paths.every((path) => path.includes('/'))
-        ? [...firstSegments][0]
-        : null
-      const normalizedFiles = wrapper
-        ? Object.fromEntries(paths.map((path) => [path.slice(wrapper.length + 1), imported[path]]))
-        : imported
-
-      const projectId = useStore.getState().projectId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined)
-      useStore.setState({
-        projectId,
-        projectName: file.name.replace(/\.zip$/i, '') || 'Imported Project',
-        projectFiles: normalizedFiles,
-        conversation: [],
-        activeFile: normalizedFiles['index.html'] ? 'index.html' : Object.keys(normalizedFiles).sort()[0] || null,
-      })
-      refreshPreview()
-      addMessage({ role: 'assistant', content: `Imported ${Object.keys(normalizedFiles).length} project files.`, timestamp: Date.now() })
-    } catch (error) {
-      setGeneratingError(error.message || 'Could not import the ZIP file.')
+      const {
+        data,
+        error
+      } = await loadProject(id);
+      if (error) throw error;
+      validateFiles(data.files);
+      const chats = await loadConversations(s.user.id, id);
+      if (chats.error) throw chats.error;
+      if (!await confirmAction('Open this saved project and replace the current workspace?')) return;
+      s.setProject(data);
+      s.setConversation(chats.data?.[0]?.messages || []);
+      s.setActiveFile(Object.keys(data.files).sort()[0] || null);
+      setCloud(null);
+      setHistory(null);
+      setNotice('Saved project loaded.');
+    } catch (e) {
+      notifyError(e);
     }
   }
-
-  async function handleDownload() {
-    const zip = new JSZip()
-    for (const [path, content] of Object.entries(projectFiles)) {
-      const binaryMatch = typeof content === 'string' && content.match(/^data:[^;]+;base64,(.*)$/s)
-      if (binaryMatch) zip.file(path, binaryMatch[1], { base64: true })
-      else zip.file(path, content)
-    }
-    const blob = await zip.generateAsync({ type: 'blob' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${projectName || 'project'}.zip`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  return (
-    <div className="flex h-screen flex-col bg-neutral-50">
-      {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <img src={ICON_SRC} alt="Buildora" className="w-8 h-8 sm:hidden" />
-            <img src={LOGO_SRC} alt="Buildora" className="hidden sm:block h-7 w-auto" />
-          </div>
-          <div className="h-6 w-px bg-neutral-200 hidden sm:block" />
-          <input
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            className="text-sm font-medium text-neutral-700 bg-transparent border-none focus:outline-none focus:ring-0 max-w-[200px]"
-            placeholder="Project name"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
-            <button
-              onClick={() => setView('chat')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                view === 'chat' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span className="hidden sm:inline">Chat</span>
-            </button>
-            <button
-              onClick={() => setView('code')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                view === 'code' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-              }`}
-            >
-              <Code2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Code</span>
-            </button>
-            <button
-              onClick={() => setView('preview')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                view === 'preview' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
-              }`}
-            >
-              <Eye className="w-4 h-4" />
-              <span className="hidden sm:inline">Preview</span>
-            </button>
-          </div>
-
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".zip,application/zip"
-            className="hidden"
-            onChange={handleImportZip}
-          />
-          <button onClick={() => importInputRef.current?.click()} className="btn-ghost btn-sm" title="Import ZIP project">
-            <Upload className="w-4 h-4" />
-          </button>
-          {user?.id && (
-            <button onClick={handleLoadCloud} className="btn-ghost btn-sm" title="Load latest cloud project">
-              <CloudDownload className="w-4 h-4" />
-            </button>
-          )}
-          <button onClick={() => { setSupabaseStatus(null); setSupabaseKey(''); setShowSupabase(true) }} className="btn-ghost btn-sm" title="Connect Supabase">
-            <Database className="w-4 h-4" />
-          </button>
-          <button onClick={handleSave} className="btn-ghost btn-sm" title="Save project">
-            <Save className="w-4 h-4" />
-          </button>
-          <button onClick={handleDownload} className="btn-ghost btn-sm" title="Download project">
-            <Download className="w-4 h-4" />
-          </button>
-          <button onClick={newProject} className="btn-ghost btn-sm" title="New project">
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-
-      {showSupabase && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-950/40 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-neutral-900">Connect Supabase</h2>
-                <p className="mt-1 text-sm text-neutral-500">Use the public project URL and publishable/anon key. Never enter a service-role key here.</p>
-              </div>
-              <button onClick={() => setShowSupabase(false)} className="btn-ghost btn-sm">✕</button>
-            </div>
-
-            <form onSubmit={handleConnectSupabase} className="mt-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1.5">Project URL</label>
-                <input value={supabaseUrl} onChange={(e) => setSupabaseUrl(e.target.value)} className="input" placeholder="https://your-project.supabase.co" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1.5">Publishable / anon key</label>
-                <input value={supabaseKey} onChange={(e) => setSupabaseKey(e.target.value)} type="password" className="input" placeholder="sb_publishable_… or anon key" required />
-              </div>
-              {supabaseStatus && <p className="text-sm text-primary-600">{supabaseStatus}</p>}
-              <button type="submit" className="btn-primary w-full">Connect Supabase</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 overflow-hidden">
-        {view === 'chat' && (
-          <ChatPanel
-            conversation={conversation}
-            isGenerating={isGenerating}
-            progress={progress}
-            generatingError={generatingError}
-            messagesEndRef={messagesEndRef}
-          />
-        )}
-        {view === 'code' && (
-          <CodeView files={projectFiles} activeFile={activeFile} setActiveFile={setActiveFile} />
-        )}
-        {view === 'preview' && <Preview files={projectFiles} />}
-      </div>
-
-      {/* Chat input */}
-      {view === 'chat' && (
-        <div className="border-t border-neutral-200 bg-white p-3 shrink-0">
-          <div className="flex items-end gap-2 max-w-4xl mx-auto">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Describe what you want to build or change..."
-                rows={1}
-                className="w-full resize-none rounded-xl border border-neutral-300 bg-white px-4 py-3 pr-12 text-sm text-neutral-900 placeholder-neutral-400 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
-                disabled={isGenerating}
-              />
-            </div>
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isGenerating}
-              className="btn-primary rounded-xl !px-3 !py-3"
-            >
-              {isGenerating ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-neutral-400 mt-2 text-center">
-            Press Enter to send, Shift+Enter for new line
-          </p>
-        </div>
-      )}
-    </div>
-  )
+  const aiPanel=<aside className="chat-panel"><div className="chat-heading"><span className="assistant-icon"><Sparkles size={17} /></span><div><strong>Buildora assistant</strong><small>Design · develop · refine</small></div><small>{prefs.apiKey ? prefs.model || "Choose model" : s.backendConfig?.aiConfigured ? "AI configured" : "AI setup needed"}</small>{mode==='work'&&<button aria-label="Close AI drawer" onClick={()=>setAiOpen(false)}><X size={19}/></button>}</div>
+      <div className="conversation">{!s.conversation.length&&<section className="hybrid-welcome"><span className="ai-emblem"><Sparkles size={30}/></span><p className="hybrid-eyebrow">YOUR PERSONAL WEBSITE BUILDING ASSISTANT</p><h1>Hello, I'm Buildora AI<span>.</span></h1><p>Turn an idea into a frontend you can edit.<br/>Ask, review and make it yours.</p><div className="hybrid-suggestions">{[[Sparkles,'Create a website','Describe your next idea','Build a responsive React portfolio with Home, Work, About and Contact. Use thoughtful typography, imported CSS and accessible mobile navigation.'],[Code2,'Improve my code','Refine the details',`Improve ${s.activeFile||'my frontend'}. Preserve working features and check relative imports.`],[MessageSquare,'Explain this code','Learn step by step',`Explain how ${s.activeFile||'this project'} works, then suggest a small useful improvement.`],[PanelsTopLeft,'Start with React','A working foundation','starter']].map(([Icon,title,desc,prompt])=><button key={title} disabled={locked} onClick={()=>prompt==='starter'?newProject('react'):setInput(prompt)}><Icon size={20}/><strong>{title}</strong><small>{desc}</small></button>)}</div></section>}
+      {s.conversation.map(m => <article key={m.id} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'YOU' : 'BUILDORA'}</div><ChatMessage text={m.text || m.content}/>{m.role==='assistant'&&!m.isError&&/```/.test(m.content||m.text||'')&&<button className="accent-button" onClick={()=>stageAnswer(m.content||m.text)}>Review & apply files to Work</button>}{m.changed?.map((p, i) => <code key={i}>{p}</code>)}</article>)}
+      {buildState && <section className="build-journey" aria-label="Build progress"><div><strong>{buildState.phase}</strong><span>{buildState.total ? `${buildState.done} / ${buildState.total} files` : 'Creating your blueprint'}</span></div>{buildState.total>0&&<progress max={buildState.total} value={buildState.done} aria-label="Completed files"/>}<ol>{['Plan','Create','Review','Preview'].map((label,i)=><li key={label} className={(buildState.phase==='Ready to review'?i<=2:buildState.total?i<=1:i===0)?'current':''}>{label}</li>)}</ol>{buildState.paths&&<details><summary>View file plan</summary>{buildState.paths.map((path,i)=><p key={path}>{i<buildState.done?'✓':'○'} {path}</p>)}</details>}</section>}
+      {recovery&&!busy&&<section className="build-recovery"><strong>Your work is still here.</strong><p>Resume completed steps, or choose another available model in settings.</p><button className="accent-button" onClick={()=>generate(recovery.message)}>Resume build <ArrowUpRight size={14}/></button><Link to="/settings">AI settings</Link><details><summary>Technical details</summary><p>{recovery.detail}</p></details></section>}
+      {busy && <div className="working"><Loader2 size={15} className="spin" />Thinking…<button onClick={() => controller.current?.abort()}>Stop</button></div>}
+      {review && <div className="review"><strong>Review proposed changes</strong><p>{review.text || review.summary}</p>{review.operations.map((op, i) => <details key={i}><summary>{op.type} · {op.path}</summary><pre>{op.content || '(Delete file)'}</pre></details>)}<div><button className="accent-button" onClick={accept}>Apply changes</button><button onClick={() => {try{localStorage.removeItem('buildora-build-checkpoint:'+s.projectId)}catch{}setReview(null);setNotice('Proposed changes discarded.')}}>Discard</button></div></div>}<div ref={end} /></div>
+      <div className="composer"><input ref={attachmentInput} type="file" accept=".txt,.md,.html,.css,.js,.jsx,.ts,.tsx,.json" multiple hidden onChange={async e=>{const picks=[...e.target.files];e.target.value='';try{if(attachments.length+picks.length>3)throw new Error('Attach up to 3 text files.');const loaded=[];for(const file of picks){if(file.size>12000||!validPath(file.name)||!/\.(txt|md|html|css|js|jsx|ts|tsx|json)$/i.test(file.name))throw new Error('Choose source or text files under 12 KB.');loaded.push({name:file.name,content:await file.text()})}setAttachments(items=>[...items,...loaded])}catch(error){setNotice(error.message)}}}/>{attachments.length>0&&<div className="attachment-list">{attachments.map((a,i)=><button key={a.name+i} disabled={locked} onClick={()=>setAttachments(items=>items.filter((_,n)=>n!==i))}>{a.name} ×</button>)}</div>}<textarea aria-label="Message Buildora" value={input} maxLength={20000} disabled={locked} onChange={e => setInput(e.target.value)} placeholder="Ask anything, or ask me to write code…" onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              generate();
+            }
+          }} /><div><span><button type="button" aria-label="Attach reference file" disabled={locked} onClick={()=>attachmentInput.current?.click()}><Upload size={13}/></button>Your creative brief</span><button aria-label="Send message" className="send-button" disabled={locked || !input.trim()} onClick={generate}><ArrowUp size={18} /></button></div></div><div className="chat-tools"><button disabled={locked||!s.activeFile} onClick={()=>setInput(`Improve ${s.activeFile}. Preserve its existing behavior and check related imports.`)}>Edit selected file</button><button disabled={locked||!s.conversation.length} onClick={()=>{const last=[...s.conversation].reverse().find(m=>m.role==='user');if(last)setInput(last.content||last.text)}}>Regenerate</button><button disabled={locked||!s.conversation.length} onClick={async()=>{if(await confirmAction('Clear this conversation? Your project files will stay.'))s.setConversation([])}}>Clear chat</button></div><div className="chat-footnote">Enter to send · Shift + Enter for a new line</div></aside>;
+  return <div className="workspace hybrid-builder" data-mode={mode} data-work-tab={workTab} data-theme={theme} data-brand-theme={prefs.theme}>
+    <header className="hybrid-nav"><Link to="/" className="hybrid-brand" aria-label="Buildora homepage"><img src={'/brand/mark-'+prefs.theme+'.svg'} alt=""/>buildora</Link><nav className="hybrid-mode" aria-label="Builder mode"><Link to="/builder/chat" aria-current={mode==='chat'?'page':undefined}>Chat</Link><Link to="/builder/work" aria-current={mode==='work'?'page':undefined}>Work</Link></nav><div className="hybrid-nav-actions"><button aria-label="Switch builder theme" onClick={()=>setTheme(t=>t==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={17}/>:<Moon size={17}/>}</button><Link className="hybrid-model-link" to="/settings">AI settings</Link><button aria-label="Account settings" onClick={()=>setSettings(true)}><span className="hybrid-avatar">{s.user?.email?.[0]?.toUpperCase()||'B'}</span></button></div></header>
+    <input type="file" hidden accept=".zip" ref={upload} onChange={importZip}/>{pasteOpen&&<PasteCode onClose={()=>setPasteOpen(false)} onApply={files=>{setHistory({...s.projectFiles});s.setProjectFiles(files);s.setActiveFile(Object.keys(files)[0]);setWorkTab('preview');setNotice('Code detected and arranged. Use Undo AI change to restore your previous files.')}}/>}
+    {(s.backendError||notice)&&<div className="hybrid-notice" role="status"><span>{s.backendError||notice}</span><button aria-label="Dismiss message" onClick={()=>setNotice('')}><X size={14}/></button></div>}
+    {!s.backendError&&!prefs.apiKey&&!s.backendConfig?.aiConfigured&&<div className="hybrid-key-note">Your editor and preview are ready. <Link to="/settings">Connect an AI model</Link> to generate code.</div>}
+    {mode==='chat'?<main id="builder-main" className="hybrid-chat-view"><aside className="hybrid-history"><button className="new-chat" disabled={locked} onClick={async()=>{if(await confirmAction('Start a fresh conversation? Project files will stay.')){setChatId(null);s.setConversation([])}}}><Plus size={16}/>New chat</button><span>CONVERSATIONS</span>{[...chats].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)).map(chat=><div key={chat.id} className="chat-library-row"><button disabled={busy} onClick={()=>{setChatId(chat.id);s.setConversation(chat.messages||[])}}><MessageSquare size={14}/><span>{chat.pinned?'★ ':''}{chat.title}</span></button><details><summary aria-label={'Manage '+chat.title}>⋯</summary><button onClick={()=>manageChat(chat,'rename')}>Rename</button><button onClick={()=>manageChat(chat,'pin')}>{chat.pinned?'Unpin':'Pin'}</button><button onClick={()=>manageChat(chat,'delete')}>Delete</button></details></div>)}<div className="hybrid-history-bottom"><button disabled={locked} onClick={showCloud}><CloudDownload size={15}/>Saved projects</button><button disabled={locked} onClick={()=>upload.current?.click()}><Upload size={15}/>Import ZIP</button><button disabled={locked} onClick={()=>newProject()}><Plus size={15}/>New project</button><Link to="/settings">Provider & model ↗</Link></div></aside><div className="hybrid-chat-center">{aiPanel}</div></main>:<main id="builder-main" className="hybrid-work-view"><div className="hybrid-project-bar"><div className="hybrid-project-title"><FileIcon/><input aria-label="Project name" value={s.projectName} maxLength={80} disabled={locked} onChange={e=>s.setProjectName(e.target.value)}/></div><div className="hybrid-project-actions"><button className={filesOpen?'selected':''} aria-label="Toggle project files" aria-expanded={filesOpen} onClick={()=>{setFilesOpen(v=>!v);setWorkTab('code')}}><Folder size={16}/><span>Files</span></button><button onClick={()=>setPasteOpen(true)} aria-label="Paste code to preview"><Code2 size={16}/><span>Paste code</span></button><button aria-label="Ask AI" aria-expanded={aiOpen} onClick={()=>setAiOpen(true)}><Sparkles size={16}/><span>Ask AI</span></button><button aria-label="Save project" onClick={save} disabled={locked}><Save size={16}/><span>Save</span></button><details className="hybrid-more"><summary aria-label="Project actions"><MoreHorizontal size={18}/></summary><div><ImportSource onError={setNotice} onFiles={files=>{setHistory({...s.projectFiles});s.setProjectFiles({...s.projectFiles,...files});setNotice("Source files imported. Preview updates automatically.")}}/><button disabled={locked} onClick={()=>upload.current?.click()}><Upload size={14}/>Import ZIP</button><button onClick={exportZip}><Download size={14}/>Export ZIP</button><button disabled={locked} onClick={showCloud}><CloudDownload size={14}/>Saved projects</button><button disabled={locked} onClick={()=>newProject()}><Plus size={14}/>New project</button>{history&&<button disabled={locked} onClick={()=>{s.setProjectFiles(history);setHistory(null);setNotice('Restored files from before the last AI change.')}}>Undo AI change</button>}</div></details><button className="hybrid-export accent-button" onClick={exportZip}><Download size={15}/><span>Export ZIP</span></button></div></div><nav className="hybrid-work-tabs" aria-label="Mobile work panels"><button aria-pressed={workTab==='code'} onClick={()=>setWorkTab('code')}><Code2 size={15}/>Code</button><button aria-pressed={workTab==='preview'} onClick={()=>{setWorkTab('preview');setFilesOpen(false)}}><Eye size={15}/>Preview</button></nav><div className="hybrid-work-panels" ref={splitArea} style={{'--editor-share':split+'%'}}><div className="hybrid-code"><CodeView files={s.projectFiles} activeFile={s.activeFile} setActiveFile={s.setActiveFile} theme={theme} locked={locked} explorerOpen={filesOpen} onCloseExplorer={()=>setFilesOpen(false)} onSave={save}/></div><div className="hybrid-resizer" role="separator" tabIndex={0} aria-label="Resize editor and preview" aria-orientation="vertical" aria-valuemin={28} aria-valuemax={72} aria-valuenow={Math.round(split)} onKeyDown={e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();setSplit(n=>Math.max(28,Math.min(72,n+(e.key==='ArrowLeft'?-2:2))))}}} onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId)}} onPointerMove={e=>{if(!e.currentTarget.hasPointerCapture(e.pointerId))return;const rect=splitArea.current.getBoundingClientRect();setSplit(Math.max(28,Math.min(72,(e.clientX-rect.left)/rect.width*100)))}} onPointerUp={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId)}}/><div className="hybrid-preview"><FrontendPreview files={s.projectFiles} projectId={s.projectId} activeFile={s.activeFile}/></div></div></main>}
+    {mode==='work'&&aiOpen&&<><button className="ai-drawer-backdrop" aria-label="Dismiss AI drawer" onClick={()=>setAiOpen(false)}/><section ref={drawer} className="hybrid-ai-drawer" role="dialog" aria-modal="true" aria-label="Ask Buildora AI">{aiPanel}</section></>}
+    {settings && <div className="modal-overlay"><section role="dialog" aria-modal="true" aria-labelledby="settings-title" className="workspace-modal"><button className="modal-close" aria-label="Close settings" onClick={() => setSettings(false)}><X size={18}/></button><h2 id="settings-title">Your account & backend</h2><p>{s.backendConfig?.authProvider === 'local' ? 'Accounts and saved projects are stored on this server.' : 'Supabase account backend.'}</p><p>{s.user?.email || 'Sign in to save projects.'}</p><Link to="/guide">Setup and AI guide</Link>{s.user ? <button disabled={locked} onClick={async()=>{const result=await signOut();if(result.error)notifyError(result.error);else {setSettings(false);setNotice('Signed out. Saved projects remain in your account.')}}}>Sign out</button> : <Link to="/login">Sign in</Link>}</section></div>}
+    {cloud && <div className="modal-overlay"><section role="dialog" aria-modal="true" aria-labelledby="cloud-title" className="workspace-modal"><button className="modal-close" aria-label="Close projects" onClick={() => setCloud(null)}><X size={18} /></button><h2 id="cloud-title">Your saved projects</h2>{cloud.length ? cloud.map(p => <div key={p.id}><button className="cloud-project" onClick={() => openCloud(p.id)}>{p.name}<ArrowUpRight size={15} /></button><button onClick={async()=>{if(!await confirmAction(`Delete saved project "${p.name}"?`))return;const result=await deleteProject(p.id);if(result.error)notifyError(result.error);else setCloud(items=>items.filter(item=>item.id!==p.id))}}>Delete</button></div>) : <p>No projects saved yet. Use Save to create your first one.</p>}</section></div>}
+    {dialog}</div>;
 }
-
-function ChatPanel({ conversation, isGenerating, progress, generatingError, messagesEndRef }) {
-  if (conversation.length === 0 && !isGenerating) {
-    return (
-      <div className="h-full flex items-center justify-center p-6">
-        <div className="max-w-2xl text-center">
-          <div className="w-16 h-16 rounded-2xl bg-primary-600 flex items-center justify-center mx-auto mb-6">
-            <span className="text-white font-bold text-2xl">N</span>
-          </div>
-          <h2 className="text-2xl font-bold text-neutral-900 mb-3">
-            What would you like to build?
-          </h2>
-          <p className="text-neutral-500 mb-8">
-            Describe a website, app, or feature in plain language. I'll inspect, plan, build, and validate it for you.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-            {[
-              { title: 'Landing page', desc: 'A SaaS landing page with hero, features, and pricing' },
-              { title: 'Todo app', desc: 'A todo app with add, complete, and delete actions' },
-              { title: 'Blog', desc: 'A blog with posts list and individual post pages' },
-              { title: 'Dashboard', desc: 'An analytics dashboard with charts and stats' },
-            ].map((s) => (
-              <SuggestionCard key={s.title} title={s.title} desc={s.desc} />
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        {conversation.map((msg) => (
-          <Message key={msg.id} message={msg} />
-        ))}
-
-        {isGenerating && <ProgressSteps steps={progress} />}
-
-        {generatingError && (
-          <div className="flex items-center gap-2 rounded-lg bg-error-50 border border-error-200 px-4 py-3 text-sm text-error-700">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{generatingError}</span>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-    </div>
-  )
-}
-
-function SuggestionCard({ title, desc }) {
-  return (
-    <div className="card p-4 hover:border-primary-300 hover:shadow-md transition-all cursor-default">
-      <h3 className="font-semibold text-neutral-900 text-sm mb-1">{title}</h3>
-      <p className="text-sm text-neutral-500">{desc}</p>
-    </div>
-  )
-}
-
-function Message({ message }) {
-  const isUser = message.role === 'user'
-  const isError = message.isError
-
-  if (isUser) {
-    return (
-      <div className="flex justify-end animate-slide-in-right">
-        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary-600 text-white px-4 py-2.5 text-sm">
-          <p className="whitespace-pre-wrap">{message.content}</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex justify-start animate-slide-up">
-      <div className="max-w-[85%] w-full">
-        <div className={`rounded-2xl rounded-bl-md px-4 py-3 text-sm ${isError ? 'bg-error-50 border border-error-200' : 'bg-white border border-neutral-200'}`}>
-          {message.text && (
-            <p className="whitespace-pre-wrap text-neutral-700 mb-3">{message.text}</p>
-          )}
-          {!message.text && message.content && (
-            <p className="whitespace-pre-wrap text-neutral-700">{message.content}</p>
-          )}
-
-          {message.operations && message.operations.length > 0 && (
-            <div className="mt-3 space-y-1.5">
-              <p className="text-xs font-medium text-neutral-400 uppercase tracking-wide">Files changed</p>
-              {message.operations.map((op, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm text-neutral-600">
-                  {op.type === 'write' ? (
-                    <FileCode2 className="w-4 h-4 text-primary-500" />
-                  ) : (
-                    <Trash2 className="w-4 h-4 text-error-500" />
-                  )}
-                  <span className="font-mono text-xs">{op.path}</span>
-                  <span className={`badge ${op.type === 'write' ? 'bg-primary-50 text-primary-700' : 'bg-error-50 text-error-700'}`}>
-                    {op.type}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {message.providerNotice && (
-            <div className="mt-3 text-xs text-primary-600">{message.providerNotice}</div>
-          )}
-
-          {message.summary && (
-            <div className="mt-3 pt-3 border-t border-neutral-100">
-              <p className="text-sm text-neutral-600">{message.summary}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProgressSteps({ steps }) {
-  return (
-    <div className="rounded-2xl rounded-bl-md bg-white border border-neutral-200 px-4 py-3 animate-slide-up">
-      <div className="space-y-2">
-        {steps.map((step, i) => (
-          <div key={i} className="flex items-center gap-3 text-sm">
-            {step.status === 'done' && (
-              <CheckCircle2 className="w-4 h-4 text-success-500" />
-            )}
-            {step.status === 'active' && (
-              <Loader2 className="w-4 h-4 text-primary-500 animate-spin" />
-            )}
-            {step.status === 'pending' && (
-              <div className="w-4 h-4 rounded-full border-2 border-neutral-200" />
-            )}
-            {step.status === 'error' && (
-              <AlertCircle className="w-4 h-4 text-error-500" />
-            )}
-            <span className={`${
-              step.status === 'done' ? 'text-neutral-400 line-through' :
-              step.status === 'active' ? 'text-neutral-900 font-medium' :
-              step.status === 'error' ? 'text-error-600' :
-              'text-neutral-400'
-            }`}>
-              {step.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+function FileIcon(){return <span className="hybrid-file-icon"><Code2 size={17}/></span>}

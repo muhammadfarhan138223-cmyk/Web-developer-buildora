@@ -1,6 +1,8 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { nanoid } from 'nanoid'
+import { starterFiles } from './lib/templates.js'
+import { applyChanges, validateFiles } from './lib/files.js'
 
 const createProjectId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -9,38 +11,14 @@ const createProjectId = () => {
   return nanoid()
 }
 
-const DEFAULT_PROJECT_FILES = {
-  'index.html': `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Website</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="bg-white text-gray-900">
-    <div id="app"></div>
-    <script type="module" src="/main.js"></script>
-  </body>
-</html>`,
-  'main.js': `document.getElementById('app').innerHTML = \`
-  <main class="min-h-screen flex items-center justify-center px-6">
-    <section class="text-center">
-      <p class="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">Buildora</p>
-      <h1 class="mt-3 text-4xl font-bold tracking-tight text-gray-900">Your project starts here.</h1>
-      <p class="mt-4 max-w-lg text-gray-600">Describe what you want in the chat and Buildora will create or update the project files.</p>
-    </section>
-  </main>
-\`;
-`,
-}
-
 export const useStore = create(
   persist(
     (set) => ({
       // Auth
       user: null,
       authLoading: true,
+      backendError: '',
+      backendConfig: null,
       setUser: (user) => set({ user, authLoading: false }),
 
       // Project
@@ -56,17 +34,17 @@ export const useStore = create(
       newProject: () =>
         set({
           projectId: createProjectId(),
-          projectName: 'Untitled Project',
-          projectFiles: { ...DEFAULT_PROJECT_FILES },
+          projectName: 'Studio / My first project',
+          projectFiles: { 'index.html': '' },
           conversation: [],
           activeFile: 'index.html',
           previewKey: 0,
         }),
       setProjectName: (name) => set({ projectName: name }),
-      setProjectFiles: (files) => set({ projectFiles: files }),
+      setProjectFiles: (files) => set(state => ({ projectFiles: validateFiles(files), activeFile: Object.prototype.hasOwnProperty.call(files, state.activeFile) ? state.activeFile : Object.keys(files).sort()[0] || null })),
       updateFile: (path, content) =>
         set((state) => ({
-          projectFiles: { ...state.projectFiles, [path]: content },
+          projectFiles: applyChanges(state.projectFiles, [{ type: 'write', path, content }]),
         })),
       deleteFile: (path) =>
         set((state) => {
@@ -127,6 +105,11 @@ export const useStore = create(
     }),
     {
       name: 'nexusai-builder-state',
+      storage: createJSONStorage(() => ({
+        getItem: key => { try { return localStorage.getItem(key) } catch { return null } },
+        setItem: (key, value) => { try { localStorage.setItem(key, value) } catch { window.dispatchEvent(new Event('buildora-storage-error')) } },
+        removeItem: key => { try { localStorage.removeItem(key) } catch {} },
+      })),
       version: 2,
       migrate: (persistedState) => ({
         ...persistedState,

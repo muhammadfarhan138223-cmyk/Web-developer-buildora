@@ -64,12 +64,15 @@ export function getAvailableProviders() {
   if (process.env.GEMINI_API_KEY) providers.push('gemini')
   if (process.env.GROQ_API_KEY) providers.push('groq')
   if (process.env.OPENAI_API_KEY) providers.push('openai')
+  if (process.env.OLLAMA_MODEL) providers.push('ollama')
   return providers
 }
 
 export function getModelChain(tier) {
-  const chain = modelConfig[tier] || modelConfig.medium
+  const chain = [...(modelConfig[tier] || modelConfig.medium)]
+  if (process.env.OLLAMA_MODEL) chain.unshift({provider:'ollama',model:process.env.OLLAMA_MODEL})
+  if (process.env.OPENAI_MODEL && !chain.some(entry => entry.provider === 'openai')) chain.push({ provider: 'openai', model: process.env.OPENAI_MODEL })
   const available = getAvailableProviders()
   if (available.length === 0) return []
-  return chain.filter((entry) => available.includes(entry.provider))
+  return chain.filter((entry) => available.includes(entry.provider)).filter(entry => process.env.AI_FREE_ONLY === 'false' || entry.provider === 'ollama' || entry.provider === 'openrouter' && (entry.model === 'openrouter/free' || entry.model.endsWith(':free')))
 }

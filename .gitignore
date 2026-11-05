@@ -6,3 +6,9 @@ dist
 .DS_Store
 .vercel
 npm-debug.log*
+.buildora/
+.buildora-build/
+*.sqlite*
+
+.vercel
+.env*
