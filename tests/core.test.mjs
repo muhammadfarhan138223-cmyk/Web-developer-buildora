@@ -113,7 +113,7 @@ test('guest mode is loopback-only and disabled by default', async () => {
   }));
   delete process.env.ALLOW_LOCAL_GUEST;
 });
-test('API rejects cross-origin calls and gives a useful missing-key response', async () => {
+test('API rejects cross-origin calls and requires a signed-in account', async () => {
   function response() {
     return {
       code: 200,
@@ -159,7 +159,7 @@ test('API rejects cross-origin calls and gives a useful missing-key response', a
       message: 'hello'
     }
   }, res);
-  assert.equal(res.code, 503);
-  assert.equal(res.data.code, 'AI_PROVIDER_NOT_CONFIGURED');
+  assert.equal(res.code, 401);
+  assert.match(res.data.error, /Sign in/);
   delete process.env.ALLOW_LOCAL_GUEST;
 });

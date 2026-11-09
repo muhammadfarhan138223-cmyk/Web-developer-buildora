@@ -19,7 +19,7 @@ export async function signIn(email,password) {
 export async function signOut() {
   try {
     if(local()) await api('/api/auth/logout',{method:'POST',body:'{}'})
-    else {const result=await getSupabaseClient()?.auth.signOut();if(result?.error)throw result.error}
+    else {const result=await getSupabaseClient()?.auth.signOut({scope:'local'});if(result?.error)throw result.error}
     usePreferences.getState().update({apiKey:'',githubToken:''});useStore.getState().newProject();useStore.getState().setUser(null);emit(null);return {error:null}
   } catch(error) {return {error}}
 }

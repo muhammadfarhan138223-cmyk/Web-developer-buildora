@@ -10,7 +10,7 @@ export default function Login() {
   const prefs=usePreferences(),theme=prefs.theme;
   const location=useLocation(),navigate=useNavigate(),mode=location.pathname.slice(1),signup=mode==='signup',recover=mode==='recover',reset=mode==='reset-password'
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[code,setCode]=useState(''),[visible,setVisible]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[success,setSuccess]=useState(''),[recovery,setRecovery]=useState('')
-  const nextParam=new URLSearchParams(location.search).get('next'),next=['/builder','/connections','/settings','/projects'].includes(nextParam)?nextParam:'/builder';
+  const nextParam=new URLSearchParams(location.search).get('next'),next=['/builder','/builder/work','/builder/chat','/connections','/settings','/projects'].includes(nextParam)?nextParam:'/builder';
   const authLoading=useStore(s=>s.authLoading),backendError=useStore(s=>s.backendError),local=getBackendConfig()?.authProvider==='local'
   async function submit(e) {
     e.preventDefault();setBusy(true);setError('');setSuccess('')
@@ -20,6 +20,7 @@ export default function Login() {
       if(result.data?.recoveryCode){setRecovery(result.data.recoveryCode);return}
       if(recover){setSuccess('If this account exists, check your email for a reset link.');return}
       if(signup && !result.data?.session){setSuccess('Check your email to confirm your account, then sign in.');return}
+      if(result.data?.session?.user)useStore.getState().setUser(result.data.session.user);
       navigate(next,{replace:true})
     }catch(e){setError(e.message || 'Unable to sign in. Please try again.')}finally{setBusy(false)}
   }
@@ -33,7 +34,7 @@ export default function Login() {
       {error&&<div className="auth-error" role="alert">{error}</div>}{success&&<div className="auth-success" role="status">{success}</div>}
       <button className="site-button" disabled={busy||authLoading||!!backendError}>{busy?<Loader2 className="spin" size={17}/>:<>{signup?'Create account':recover?'Recover account':reset?'Update password':'Sign in'}<ArrowUpRight size={17}/></>}</button>
     </form>}
-    {!recovery&&!recover&&!reset&&<div className="social-login">{["google","github","facebook"].map(provider=><button key={provider} type="button" onClick={async()=>{if(local){setError("Social sign-in needs the site owner to connect Supabase and enable this provider. Email/password works now.");return}try{const result=await signInWithProvider(provider);if(result.error)setError(result.error.message)}catch(e){setError(e.message||'Unable to connect to this login provider.')}}}>Continue with {provider[0].toUpperCase()+provider.slice(1)}</button>)}{local&&<small>Social providers await site-owner setup.</small>}</div>}
+    {!recovery&&!recover&&!reset&&<p className="auth-storage-note">Use email and password. Social login will appear here once its callback setup is verified.</p>}
     {!recovery&&<><p className="auth-switch">{signup?'Already have an account?':'New to Buildora?'} <Link to={(signup?'/login':'/signup')+'?next='+encodeURIComponent(next)}>{signup?'Sign in':'Create an account'}</Link></p><div className="auth-divider"><span>OR KEEP EXPLORING</span></div><Link className="guest-link" to="/builder">Try the editor without signing in<ArrowUpRight size={15}/></Link></>}
-    <p className="auth-storage-note">{local?'Accounts and projects are stored on this Buildora server. Email is an account identifier; local mode does not send verification emails.':'Use your Nexus AI email and password here. Both sites share one Supabase account; your Buildora projects stay separate.'} <Link to="/privacy">How your data is handled</Link></p></div><div className="auth-bottom"><span>Make something worth opening.</span><Link to="/guide">Need a hand? ↗</Link></div></main></div><SiteFooter/></div>
+    <p className="auth-storage-note">{local?'Accounts and projects are stored on this Buildora server. Email is an account identifier; local mode does not send verification emails.':'Buildora uses email/password authentication. Existing accounts from the retired Supabase project do not transfer automatically. Confirm your signup email before signing in.'} <Link to="/privacy">How your data is handled</Link></p></div><div className="auth-bottom"><span>Make something worth opening.</span><Link to="/guide">Need a hand? ↗</Link></div></main></div><SiteFooter/></div>
 }

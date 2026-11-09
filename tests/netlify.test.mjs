@@ -4,10 +4,10 @@ import handler from '../netlify/functions/api.mjs';
 import {generateWithRouting} from '../server/byok.js';
 test('Netlify bridge returns JSON config and model API instead of SPA HTML',async()=>{
  const original=global.fetch,old=process.env.NETLIFY;process.env.NETLIFY='true';
- global.fetch=async()=>new Response(JSON.stringify({models:[{name:'models/flash',supportedGenerationMethods:['generateContent']}]}));
+ global.fetch=async(url)=>String(url).includes('/auth/v1/user')?new Response(JSON.stringify({id:'test-owner'})):new Response(JSON.stringify({models:[{name:'models/flash',supportedGenerationMethods:['generateContent']}]}));
  try{
   let r=await handler(new Request('https://buildora.example/.netlify/functions/api/config'));assert.equal(r.status,200);assert.equal((await r.json()).authProvider,'supabase');
-  r=await handler(new Request('https://buildora.example/.netlify/functions/api/models',{method:'POST',headers:{'Content-Type':'application/json',origin:'https://buildora.example'},body:JSON.stringify({provider:'gemini',apiKey:'test'})}),{ip:'test-client'});assert.equal(r.status,200);assert.equal((await r.json()).catalog[0].id,'flash');
+  r=await handler(new Request('https://buildora.example/.netlify/functions/api/models',{method:'POST',headers:{'Content-Type':'application/json',authorization:'Bearer test-session',origin:'https://buildora.example'},body:JSON.stringify({provider:'gemini',apiKey:'test'})}),{ip:'test-client'});assert.equal(r.status,200);assert.equal((await r.json()).catalog[0].id,'flash');
   r=await handler(new Request('https://buildora.example/.netlify/functions/api/models',{method:'POST',headers:{'Content-Type':'application/json',origin:'https://evil.example'},body:'{}'}));assert.equal(r.status,403);
  }finally{global.fetch=original;if(old===undefined)delete process.env.NETLIFY;else process.env.NETLIFY=old}
 });

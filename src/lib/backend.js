@@ -1,6 +1,9 @@
+import {getSupabaseClient} from './supabaseClient.js';
 let config = null
 export function getBackendConfig() { return config }
 export async function api(path, options = {}) {
+  const session=await getSupabaseClient()?.auth.getSession();
+  if(session?.data?.session?.access_token)options={...options,headers:{Authorization:`Bearer ${session.data.session.access_token}`,...options.headers}};
   let response
   const ownController = options.signal ? null : new AbortController()
   const timer = ownController ? setTimeout(()=>ownController.abort(),path==='/api/models'?30000: path==='/api/integrations/github'?120000:20000) : null

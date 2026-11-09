@@ -3,12 +3,12 @@ export function detectCode(source,hint=''){
  const text=source.trim();let extension;
  if(/<\?php|^\s*(from\s+\w+\s+import|def\s+\w+\(|package\s+\w+;|#include)/m.test(text)||/\b(require\(['"]express|app\.listen\(|createServer\()/.test(text))throw new Error('This is backend code. Work previews browser frontend code only.');
  if(/^\s*<template[\s>]/.test(text)||/<script\s+setup\b/.test(text))extension='vue';
- else if(/<!doctype|<html\b|<body\b|<head\b/i.test(text))extension='html';
+ else if(/^(?:<!doctype|<html\b|<body\b|<head\b)/i.test(text))extension='html';
  else if(/^<(?!template\b|script\b)[a-z][\w-]*(?:\s|>)/i.test(text))extension='html';
- else if(/<[A-Za-z][\w.-]*(?:\s|>|\/)/.test(text)&&(/\b(import|export|const|function|return)\b|=>/.test(text)))extension=/\b(interface|type)\s+\w+|useState<|:\s*(string|number|boolean)\b/.test(text)?'tsx':'jsx';
+ else if(/<[A-Za-z][\w.-]*(?:\s|>|\/)/.test(text)&&(/\breturn\s*\(?\s*<|=>\s*\(?\s*<|=\s*\(?\s*</.test(text)))extension=/\b(interface|type)\s+\w+|useState<|:\s*(string|number|boolean)\b/.test(text)?'tsx':'jsx';
  else if(/^[\s\S]*[.#@\w\[\]-][^{}]*\{[^{}]*[\w-]+\s*:[^{}]+\}/.test(text)&&! /\b(const|function|import|export)\b/.test(text))extension='css';
  else if(/\b(interface|type)\s+\w+|:\s*(string|number|boolean)\b/.test(text))extension='ts';
- else if(/\b(const|let|var|function|document|import|export)\b|=>/.test(text))extension='js';
+ else if(/\b(const|let|var|function|document|window|console|alert|setTimeout|setInterval|import|export)\b|=>/.test(text))extension='js';
  else if(/<\w+[\s>]/.test(text))extension='html';
  else if(/^(html|css|javascript|js|jsx|typescript|ts|tsx)$/.test(hint))extension=({javascript:'js',typescript:'ts'}[hint]||hint);
  else throw new Error('Code type was not recognized. Paste complete HTML, CSS, JavaScript, JSX, TypeScript or TSX.');

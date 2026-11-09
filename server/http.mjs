@@ -64,6 +64,7 @@ export async function handleApi(req, res, handler) {
       const {providerHealth}=await import('./byok.js');return res.json(await providerHealth(req.body.provider));
     }
     if (route === '/api/models' && req.method === 'POST') {
+      const {authorize}=await import('./access.js');await authorize(req,true);
       const {enforceLimit}=await import('./access.js');
       if(!enforceLimit('models:'+req.socket.remoteAddress))return res.status(429).json({error:'Please wait before testing another connection.'});
       const {modelCatalog}=await import('./byok.js');const catalog=await modelCatalog(req.body);return res.json({models:catalog.map(m=>m.id),catalog});

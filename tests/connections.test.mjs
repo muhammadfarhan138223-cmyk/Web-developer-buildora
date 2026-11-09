@@ -18,10 +18,11 @@ test('BYOK adapters use per-request credentials and provider-specific protocol',
   assert.equal(process.env.OPENAI_API_KEY,undefined);
  }finally{global.fetch=original}
 });
-test('guest can generate with an explicit own key without a Buildora account',async()=>{
- const original=global.fetch;global.fetch=async()=>new Response(JSON.stringify({choices:[{message:{content:'```file:index.html\n<h1>Guest project</h1>\n```'}}]}));
- const res={code:200,setHeader(){},status(n){this.code=n;return this},json(data){this.data=data;return this}};
- try{await handler({method:'POST',headers:{'content-type':'application/json'},socket:{remoteAddress:'127.0.0.1'},body:{message:'Build a page',connection:{provider:'openai',apiKey:'test-only',model:'selected-model'}}},res);assert.equal(res.code,200);assert.match(res.data.content,/Guest project/)}finally{global.fetch=original}
+test('AI requires an account even with a key, and authenticated BYOK succeeds',async()=>{
+ const original=global.fetch;let calls=0;global.fetch=async(url)=>{calls++;return String(url).includes('/auth/v1/user')?new Response(JSON.stringify({id:'test-owner'})):new Response(JSON.stringify({choices:[{message:{content:'Signed-in response'}}]}))};
+ const response=()=>({code:200,setHeader(){},status(n){this.code=n;return this},json(data){this.data=data;return this}});
+ const request={method:'POST',headers:{'content-type':'application/json'},socket:{remoteAddress:'127.0.0.1'},body:{mode:'conversation',message:'Hi',connection:{provider:'openai',apiKey:'test-only',model:'selected-model'}}};
+ try{const guest=response();await handler(request,guest);assert.equal(guest.code,401);assert.equal(calls,0);const signed=response();await handler({...request,headers:{...request.headers,authorization:'Bearer test-session'}},signed);assert.equal(signed.code,200);assert.match(signed.data.content,/Signed-in response/)}finally{global.fetch=original}
 });
 test('auth app starter contains real Supabase auth, OAuth, owner policies and editor workspace',()=>{
  const files=authStarter('https://project.supabase.co','sb_publishable_example');

@@ -10,3 +10,5 @@
 @keyframes studio-atmosphere{from{opacity:.55;transform:translateY(0)}to{opacity:1;transform:translateY(-12px)}}
 @media(prefers-reduced-motion:reduce){.hybrid-builder[data-mode=work]::before{animation:none}}
 @media(max-width:760px){.hybrid-builder[data-mode=work] .hybrid-work-view{width:calc(100% - 16px);margin:8px auto 10px;border-radius:14px}.hybrid-builder[data-mode=work] .hybrid-project-bar{padding:9px;gap:8px;min-height:62px}.hybrid-builder .hybrid-project-title input{max-width:140px}.hybrid-builder .hybrid-project-actions{flex-wrap:wrap;gap:4px}.hybrid-builder .frontend-stage{padding:7px}}
+
+.preview-output{max-height:180px;overflow:auto;background:#101a2e;color:#dce5ff;padding:10px;font-size:12px}.preview-output pre{white-space:pre-wrap;overflow-wrap:anywhere}.preview-output summary{cursor:pointer}

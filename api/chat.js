@@ -25,9 +25,8 @@ export default async function handler(req, res) {
 
   try { validateBody(req.body || {}) } catch (e) { return res.status(400).json({ error: e.message }) }
   let userId
-  try { userId = req.body?.connection ? 'guest:'+req.socket?.remoteAddress : await authorize(req) } catch (e) {
-    if(e.status===401 && (req.body?.connection || process.env.ALLOW_GUEST_AI==='true')) userId='guest:'+req.socket?.remoteAddress;
-    else return res.status(e.status || 503).json({ error: e.status===401 ? 'Start building without an account: add your own API key in Settings. Create an account only when saving or exporting.' : e.status ? e.message : 'Authentication service unavailable.' });
+  try { userId = await authorize(req,true) } catch (e) {
+    return res.status(e.status || 503).json({ error: e.status===401 ? 'Sign in to use AI. The frontend editor and preview do not require an account.' : e.status ? e.message : 'Authentication service unavailable.' });
   }
   if (!enforceLimit(userId)) {
     return res.status(429).json({ error: 'Please slow down for a moment. Buildora will automatically be ready again shortly.', code: 'RATE_LIMITED' })

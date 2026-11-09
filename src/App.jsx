@@ -1,3 +1,4 @@
+import {restoreProviderKey} from './lib/keyVault.js';
 import React, { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useStore } from './store.js'
@@ -19,6 +20,8 @@ const Templates=lazy(()=>import('./pages/Templates.jsx'));
 const Projects=lazy(()=>import('./pages/Projects.jsx'));
 const Pricing=lazy(()=>import('./pages/Pricing.jsx'));
 export default function App() {
+  const owner=useStore(s=>s.user?.id);
+  useEffect(()=>{restoreProviderKey(owner).catch(()=>window.dispatchEvent(new Event('buildora-key-restore-error')))},[owner]);
   useEffect(()=>{
     let active=true, subscription
     async function init(){
@@ -26,7 +29,7 @@ export default function App() {
         const config=await bootstrapBackend();if(!active)return
         initializeAuthClient(config);useStore.setState({backendConfig:config,backendError:''})
         subscription=onAuthStateChange(session=>{if(active)useStore.getState().setUser(session?.user || null)})
-        const user=await getCurrentUser();if(active)useStore.getState().setUser(user)
+        let user=null;try{user=await getCurrentUser()}catch{ /* A stale session must not disable the sign-in form. */ }if(active)useStore.getState().setUser(user)
       }catch(error){if(active)useStore.setState({user:null,authLoading:false,backendError:error.message})}
     }
     init()
